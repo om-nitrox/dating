@@ -1,0 +1,382 @@
+Build a full-stack mobile-first dating app with the following concept:
+
+APP NAME: (temporary) "Reverse Match"
+
+CORE IDEA:
+
+* Girls browse profiles of boys (like Tinder swipe UI)
+* Boys cannot browse girls
+* Boys only see girls who liked them (queue system)
+* Match only happens if boy accepts the girl
+
+---
+
+1. TECH STACK (STRICT)
+
+---
+
+Frontend:
+
+* Flutter (cross-platform, Android + iOS)
+* Clean UI, modern, minimal
+* State management: Riverpod or Provider
+
+Backend:
+
+* Node.js + Express
+* JWT authentication
+* REST APIs
+* WebSockets (Socket.IO) for chat
+
+Database:
+
+* MongoDB (with Mongoose)
+
+Cloud:
+
+* Firebase Cloud Messaging (push notifications)
+* AWS S3 or Cloudinary (image storage)
+
+---
+
+2. USER ROLES
+
+---
+
+* User selects gender at signup:
+
+  * Female → gets swipe UI
+  * Male → gets queue UI
+
+---
+
+3. ONBOARDING FLOW (VERY IMPORTANT)
+
+---
+
+When user installs app:
+
+Step 1: Welcome screen
+Step 2: Login/Signup (Email OTP OR Google login)
+
+Step 3: Profile Setup (MANDATORY)
+Collect:
+
+* Name
+* Age (18+ validation)
+* Gender (Male/Female)
+* Photos (min 2, max 6)
+* Bio (max 300 chars)
+* Interests (select tags)
+* Location (auto + manual override)
+
+Step 4: Preferences
+
+* Age range
+* Distance range
+
+Step 5:
+
+* Save profile
+* Redirect to main app
+
+---
+
+4. GIRL EXPERIENCE (SWIPE SYSTEM)
+
+---
+
+UI:
+
+* Full screen cards (like Tinder)
+* Swipe Right → Like
+* Swipe Left → Skip
+
+Card includes:
+
+* Photos (carousel)
+* Name, age
+* Bio
+* Interests
+
+Logic:
+
+* When girl swipes RIGHT:
+  → API call: /like
+  → Save in DB
+  → Trigger push notification to boy:
+  "Someone liked your profile"
+
+---
+
+5. BOY EXPERIENCE (QUEUE SYSTEM)
+
+---
+
+Default screen:
+
+* Empty state:
+  "Waiting for someone to like you"
+
+When girl likes him:
+
+* Her profile appears in queue
+
+UI:
+
+* Stack or list of incoming likes
+
+Actions:
+
+* Swipe Right → Accept
+* Swipe Left → Reject
+
+Logic:
+
+* If ACCEPT:
+  → Match created
+  → Notify both users
+  → Chat unlocked
+* If REJECT:
+  → Delete entry
+  → Girl NOT notified
+
+---
+
+6. MATCH SYSTEM
+
+---
+
+* Match only when boy accepts
+* Store matches in DB
+* Each match has:
+
+  * user1
+  * user2
+  * timestamp
+
+---
+
+7. CHAT SYSTEM (REAL-TIME)
+
+---
+
+* Use Socket.IO
+* Features:
+
+  * Text messages
+  * Read receipts
+  * Typing indicator
+  * Timestamp
+
+API:
+
+* /messages/send
+* /messages/get
+
+---
+
+8. BOOST SYSTEM (CORE DIFFERENTIATOR)
+
+---
+
+Track:
+
+* daysWithoutMatch (per boy)
+
+Logic:
+
+* Day 0–6 → normal
+* Day 7–14 → Bronze (2x visibility)
+* Day 15–24 → Silver (5x)
+* Day 25+ → Gold (top priority)
+
+Implementation:
+
+* Ranking algorithm in feed API
+* Boost affects ordering
+
+Reset:
+
+* On match → reset to 0
+
+---
+
+9. PAID BOOST SYSTEM
+
+---
+
+Boys can purchase:
+
+* Bronze (1 day)
+* Silver (3 days)
+* Gold (7 days)
+
+Implementation:
+
+* Payment gateway (Stripe/Razorpay)
+* Override ranking temporarily
+
+---
+
+10. DATABASE DESIGN (MONGODB)
+
+---
+
+Collections:
+
+Users:
+
+* id
+* name
+* age
+* gender
+* bio
+* interests[]
+* photos[]
+* location
+* preferences
+* daysWithoutMatch
+* boostLevel
+
+Likes:
+
+* id
+* fromUser
+* toUser
+* status (pending, accepted, rejected)
+
+Matches:
+
+* id
+* user1
+* user2
+
+Messages:
+
+* id
+* matchId
+* senderId
+* text
+* seen
+* timestamp
+
+---
+
+11. PUSH NOTIFICATIONS
+
+---
+
+Use Firebase:
+
+* Like received
+* Match created
+* New message
+
+---
+
+12. SAFETY FEATURES (IMPORTANT)
+
+---
+
+* Report user
+* Block user
+* Photo moderation (basic)
+* Rate limit likes (avoid spam)
+
+---
+
+13. UI SCREENS (FLUTTER)
+
+---
+
+* Splash screen
+* Login/Signup
+* Profile setup
+* Home (Girl swipe / Boy queue)
+* Matches list
+* Chat screen
+* Profile edit
+* Settings
+
+---
+
+14. API ENDPOINTS
+
+---
+
+Auth:
+
+* POST /signup
+* POST /login
+
+Profile:
+
+* GET /profile
+* PUT /profile
+
+Swipe:
+
+* POST /like
+* POST /reject
+
+Queue:
+
+* GET /queue
+
+Match:
+
+* GET /matches
+
+Chat:
+
+* GET /messages/:matchId
+* POST /messages
+
+---
+
+15. IMPORTANT LOGIC DETAILS
+
+---
+
+* Girls NEVER see who liked them
+* Boys NEVER browse girls
+* Girls cannot see rejection
+* Ranking system must prioritize boosted boys
+* Prevent duplicate likes
+
+---
+
+16. DELIVERABLES
+
+---
+
+* Full backend code (Node.js)
+* Full Flutter frontend
+* Folder structure
+* Setup instructions
+* Environment variables
+* Sample data
+
+---
+
+17. MAKE IT PRODUCTION READY
+
+---
+
+* Clean architecture
+* Modular code
+* Error handling
+* Secure JWT
+* Input validation
+* Scalable design
+
+---
+
+Generate:
+
+1. Backend first (complete)
+2. Then Flutter app
+3. Then integration steps
+
+DO NOT SKIP ANYTHING.

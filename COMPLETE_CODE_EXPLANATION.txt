@@ -1,0 +1,2869 @@
+================================================================================
+  REVERSE MATCH - COMPLETE CODE EXPLANATION
+  Every file, every function, every line of logic explained
+================================================================================
+
+Written: April 2026
+App Name: Reverse Match
+Concept: A dating app where girls choose first. Girls browse boy profiles
+         (Tinder-style swipe). Boys CANNOT browse girls. Boys only see girls
+         who liked them (queue). Match only happens when a boy accepts a girl's
+         like. Chat unlocks after match.
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+  PART 1: PROJECT STRUCTURE & OVERVIEW
+  PART 2: BACKEND - INFRASTRUCTURE & CONFIG
+  PART 3: BACKEND - DATABASE MODELS (MongoDB/Mongoose)
+  PART 4: BACKEND - MIDDLEWARE (Security, Auth, Validation)
+  PART 5: BACKEND - ROUTES & CONTROLLERS
+  PART 6: BACKEND - SERVICES (Business Logic)
+  PART 7: BACKEND - UTILITIES
+  PART 8: BACKEND - SOCKET.IO (Real-time Chat)
+  PART 9: BACKEND - CRON JOBS
+  PART 10: FLUTTER - INFRASTRUCTURE & CORE
+  PART 11: FLUTTER - SHARED MODELS
+  PART 12: FLUTTER - SHARED WIDGETS
+  PART 13: FLUTTER - FEATURES (Auth, Home, Chat, etc.)
+  PART 14: DEVOPS (Docker, CI/CD, PM2)
+  PART 15: COMPLETE USER FLOW (Step by Step)
+  PART 16: API ENDPOINTS REFERENCE
+  PART 17: ENVIRONMENT VARIABLES REFERENCE
+  PART 18: HOW THE BOOST SYSTEM WORKS
+  PART 19: HOW THE MATCHING ALGORITHM WORKS
+  PART 20: SECURITY MEASURES EXPLAINED
+
+================================================================================
+PART 1: PROJECT STRUCTURE & OVERVIEW
+================================================================================
+
+D:/dating/
+|
+|-- New Text Document.txt          <- Original requirements/spec document
+|-- docker-compose.yml             <- Docker stack: API + MongoDB + Redis
+|-- .github/workflows/ci.yml      <- GitHub Actions CI/CD pipeline
+|
+|-- backend/                       <- Node.js + Express backend
+|   |-- .env                       <- Environment variables (secrets, DB URI)
+|   |-- .env.example               <- Template of .env (no real secrets)
+|   |-- .gitignore                 <- Files git should ignore
+|   |-- .dockerignore              <- Files Docker should ignore
+|   |-- Dockerfile                 <- Multi-stage Docker build for production
+|   |-- ecosystem.config.js        <- PM2 cluster mode configuration
+|   |-- package.json               <- NPM dependencies and scripts
+|   |-- server.js                  <- Entry point - starts everything
+|   |
+|   |-- src/
+|       |-- app.js                 <- Express app setup (middleware, routes)
+|       |
+|       |-- config/                <- Configuration modules
+|       |   |-- index.js           <- Central config (reads .env)
+|       |   |-- db.js              <- MongoDB connection
+|       |   |-- redis.js           <- Redis connection
+|       |   |-- cloudinary.js      <- Cloudinary (image hosting) setup
+|       |   |-- firebase.js        <- Firebase Admin SDK (push notifications)
+|       |   |-- sentry.js          <- Sentry (error tracking) setup
+|       |   |-- stripe.js          <- Stripe (payments) setup
+|       |
+|       |-- models/                <- Mongoose schemas (database structure)
+|       |   |-- User.js            <- User profile, preferences, boost
+|       |   |-- Like.js            <- Girl likes boy (pending/accepted/rejected)
+|       |   |-- Match.js           <- Two users matched
+|       |   |-- Message.js         <- Chat messages within a match
+|       |   |-- Otp.js             <- Email verification codes
+|       |   |-- Block.js           <- User blocks another user
+|       |   |-- Report.js          <- User reports another user
+|       |
+|       |-- middleware/            <- Express middleware (runs before routes)
+|       |   |-- auth.middleware.js       <- JWT token verification
+|       |   |-- gender.middleware.js     <- Restrict routes by gender
+|       |   |-- validate.middleware.js   <- Joi schema validation
+|       |   |-- sanitize.middleware.js   <- NoSQL injection prevention
+|       |   |-- rateLimiter.middleware.js <- Rate limiting
+|       |   |-- upload.middleware.js     <- Multer file upload config
+|       |   |-- error.middleware.js      <- Global error handler
+|       |
+|       |-- routes/                <- URL route definitions
+|       |   |-- index.js           <- Main router (combines all sub-routes)
+|       |   |-- auth.routes.js     <- /api/v1/auth/*
+|       |   |-- profile.routes.js  <- /api/v1/profile/*
+|       |   |-- swipe.routes.js    <- /api/v1/swipe/* (girls only)
+|       |   |-- queue.routes.js    <- /api/v1/queue/* (boys only)
+|       |   |-- match.routes.js    <- /api/v1/matches/*
+|       |   |-- message.routes.js  <- /api/v1/messages/*
+|       |   |-- boost.routes.js    <- /api/v1/boost/* (boys only)
+|       |   |-- safety.routes.js   <- /api/v1/report, /api/v1/block
+|       |   |-- account.routes.js  <- DELETE /api/v1/account
+|       |
+|       |-- controllers/           <- Request handlers (thin layer)
+|       |   |-- auth.controller.js
+|       |   |-- profile.controller.js
+|       |   |-- swipe.controller.js
+|       |   |-- queue.controller.js
+|       |   |-- match.controller.js
+|       |   |-- message.controller.js
+|       |   |-- boost.controller.js
+|       |   |-- safety.controller.js
+|       |   |-- account.controller.js
+|       |
+|       |-- services/              <- Business logic (the real brains)
+|       |   |-- auth.service.js         <- OTP, Google login, token management
+|       |   |-- profile.service.js      <- Profile CRUD, photo management
+|       |   |-- swipe.service.js        <- Feed algorithm, like/skip logic
+|       |   |-- queue.service.js        <- Boy's queue, accept/reject logic
+|       |   |-- match.service.js        <- Get matches with last message
+|       |   |-- message.service.js      <- Send/get messages, read receipts
+|       |   |-- boost.service.js        <- Boost plans, Stripe checkout
+|       |   |-- safety.service.js       <- Report/block users
+|       |   |-- account.service.js      <- Account deletion
+|       |   |-- notification.service.js <- Firebase push notifications
+|       |   |-- upload.service.js       <- Cloudinary image upload/delete
+|       |
+|       |-- validators/            <- Joi validation schemas
+|       |   |-- auth.validator.js
+|       |   |-- profile.validator.js
+|       |   |-- swipe.validator.js
+|       |   |-- message.validator.js
+|       |   |-- boost.validator.js
+|       |   |-- safety.validator.js
+|       |   |-- account.validator.js
+|       |
+|       |-- socket/                <- Socket.IO real-time communication
+|       |   |-- index.js           <- Socket server setup, auth, Redis adapter
+|       |   |-- chat.handler.js    <- Chat events (messages, typing, seen)
+|       |
+|       |-- jobs/                  <- Scheduled background tasks
+|       |   |-- dailyBoost.job.js  <- Daily boost increment, expired boost cleanup
+|       |
+|       |-- utils/                 <- Shared utility functions
+|           |-- AppError.js        <- Custom error class
+|           |-- catchAsync.js      <- Async error wrapper for Express
+|           |-- logger.js          <- Pino structured logger
+|           |-- token.js           <- JWT sign/verify, token hashing
+|           |-- otp.js             <- OTP generation and email sending
+|           |-- cache.js           <- Redis cache helpers
+|
+|-- reverse_match/                 <- Flutter mobile app
+    |-- pubspec.yaml               <- Flutter dependencies
+    |-- lib/
+        |-- main.dart              <- App entry point
+        |
+        |-- core/                  <- Shared infrastructure
+        |   |-- constants/
+        |   |   |-- api_endpoints.dart    <- All API URLs
+        |   |   |-- app_constants.dart    <- App-wide constants
+        |   |   |-- storage_keys.dart     <- Secure storage key names
+        |   |
+        |   |-- network/
+        |   |   |-- dio_client.dart       <- HTTP client with auto-auth
+        |   |   |-- api_exceptions.dart   <- Exception classes
+        |   |   |-- api_result.dart       <- Success/Failure sealed class
+        |   |
+        |   |-- router/
+        |   |   |-- app_router.dart       <- GoRouter navigation + auth redirect
+        |   |
+        |   |-- socket/
+        |   |   |-- socket_service.dart   <- Socket.IO client wrapper
+        |   |
+        |   |-- storage/
+        |   |   |-- secure_storage_service.dart  <- Tokens, userId (encrypted)
+        |   |   |-- local_storage_service.dart   <- Preferences (non-sensitive)
+        |   |
+        |   |-- services/
+        |   |   |-- firebase_messaging_service.dart  <- FCM token registration
+        |   |
+        |   |-- theme/
+        |   |   |-- app_colors.dart       <- Color palette
+        |   |   |-- app_theme.dart        <- Material 3 light/dark themes
+        |   |
+        |   |-- extensions/
+        |   |   |-- context_extensions.dart  <- BuildContext helpers
+        |   |
+        |   |-- utils/
+        |       |-- validators.dart       <- Form field validators
+        |       |-- date_utils.dart       <- Date formatting utilities
+        |
+        |-- shared/                <- Shared across features
+        |   |-- models/
+        |   |   |-- user_model.dart       <- User, Photo, Location, Preferences
+        |   |   |-- like_model.dart       <- Like with fromUser info
+        |   |   |-- match_model.dart      <- Match with users + last message
+        |   |   |-- message_model.dart    <- Chat message
+        |   |
+        |   |-- widgets/
+        |       |-- app_button.dart       <- Reusable button with loading
+        |       |-- app_text_field.dart   <- Reusable text input
+        |       |-- app_cached_image.dart <- Network image with shimmer
+        |       |-- photo_carousel.dart   <- Swipeable photo gallery
+        |       |-- interest_chip.dart    <- Selectable interest tag
+        |       |-- empty_state_widget.dart <- Empty/error state display
+        |
+        |-- features/              <- Feature modules
+            |-- splash/            <- Splash screen (app startup)
+            |-- onboarding/        <- Welcome carousel (first-time users)
+            |-- auth/              <- Login, OTP, Google sign-in
+            |-- profile_setup/     <- 6-step profile creation wizard
+            |-- home/              <- Girl swipe screen + Boy queue screen
+            |-- match/             <- Matches list with conversations
+            |-- chat/              <- Real-time chat screen
+            |-- boost/             <- Paid boost purchase (Stripe)
+            |-- profile/           <- Edit profile screen
+            |-- settings/          <- Settings, logout, delete account
+
+
+TECH STACK:
+  Backend:  Node.js 22 + Express 5 + MongoDB (Mongoose 9) + Socket.IO 4
+  Frontend: Flutter 3.x + Dart 3.x + Riverpod + GoRouter
+  Cache:    Redis 7 (optional, app works without it)
+  Images:   Cloudinary
+  Payments: Stripe
+  Push:     Firebase Cloud Messaging
+  Logging:  Pino (structured JSON)
+  Errors:   Sentry (optional)
+  DevOps:   Docker, PM2, GitHub Actions
+
+
+================================================================================
+PART 2: BACKEND - INFRASTRUCTURE & CONFIG
+================================================================================
+
+--- backend/server.js ---
+This is the ENTRY POINT. When you run "node server.js", this file executes.
+
+What it does step by step:
+  1. Creates an HTTP server from the Express app (src/app.js)
+  2. Calls connectDB() to connect to MongoDB
+  3. Calls connectRedis() to connect to Redis (optional, continues if fails)
+  4. Calls initSocket(server, redisClient) to set up Socket.IO on the HTTP server
+     - Passes the Redis client so Socket.IO can use Redis as a pub/sub adapter
+     - This allows multiple server instances to share socket events
+  5. Stores the Socket.IO instance on the Express app: app.set('io', io)
+     - This lets controllers access io to emit events (e.g., new-match)
+  6. Calls initFirebase() - initializes Firebase Admin SDK (for push notifications)
+  7. Calls initCronJobs() - starts scheduled background tasks
+  8. server.listen(port) - starts accepting HTTP connections
+
+  Shutdown handler:
+  - Listens for SIGTERM (Docker stop) and SIGINT (Ctrl+C)
+  - Closes HTTP server (stops accepting new connections)
+  - Closes MongoDB connection
+  - Closes Redis connection
+  - Force exits after 10 seconds if graceful shutdown hangs
+
+  Error handlers:
+  - uncaughtException: Logs the error and triggers shutdown
+  - unhandledRejection: Logs the error (does not crash, just warns)
+
+
+--- backend/src/app.js ---
+This creates and configures the Express application.
+
+Middleware applied IN ORDER (order matters!):
+  1. Stripe webhook route (raw body) - BEFORE json parser
+     - Stripe needs the raw request body to verify webhook signatures
+     - If we parse JSON first, the signature verification fails
+
+  2. helmet() - Sets security HTTP headers:
+     - X-Content-Type-Options: nosniff
+     - X-Frame-Options: DENY
+     - Strict-Transport-Security (HSTS)
+     - Content-Security-Policy
+     - And many more security headers
+
+  3. cors() - Cross-Origin Resource Sharing:
+     - In development: allows all origins (for easy testing)
+     - In production: only allows origins listed in CORS_ORIGINS env var
+     - Credentials: true (allows cookies/auth headers)
+     - Preflight cache: 24 hours (reduces OPTIONS requests)
+
+  4. compression() - Gzip response compression (smaller payloads)
+
+  5. express.json({ limit: '10mb' }) - Parses JSON request bodies
+     - Limit prevents someone sending a 1GB JSON body to crash the server
+
+  6. express.urlencoded({ extended: true }) - Parses URL-encoded form data
+
+  7. sanitize middleware - Strips MongoDB operators ($gt, $ne, etc.) from input
+     - Prevents NoSQL injection attacks
+     - Example: someone sends { "email": { "$gt": "" } } to match all users
+     - Sanitizer removes the $ key, blocking the attack
+
+  8. morgan - HTTP request logging (dev: colored, prod: structured to pino)
+
+  9. Request timeout (30 seconds) - If a request takes longer, returns 408
+
+Routes:
+  - GET /health - Deep health check (checks MongoDB + Redis status)
+  - GET /ready - Readiness probe for Kubernetes (just checks MongoDB)
+  - /api/v1/* - All API routes (see routes/index.js)
+  - 404 handler - Catches any unmatched route
+  - Sentry error handler - Captures errors to Sentry (if configured)
+  - Global error handler - Formats and returns error responses
+
+
+--- backend/src/config/index.js ---
+Central configuration. Reads .env file and exports a frozen (immutable) object.
+
+Required variables (server won't start without these):
+  - MONGO_URI: MongoDB connection string
+  - JWT_ACCESS_SECRET: Secret key for signing access tokens
+  - JWT_REFRESH_SECRET: Secret key for signing refresh tokens
+
+All other variables have sensible defaults. If SMTP is not configured,
+OTP codes are logged to console in development mode.
+
+The config object is frozen with Object.freeze() so no code can accidentally
+modify configuration at runtime.
+
+
+--- backend/src/config/db.js ---
+MongoDB connection using Mongoose.
+
+Connection pool settings:
+  - Production: maxPoolSize=50, minPoolSize=10
+  - Development: maxPoolSize=10, minPoolSize=2
+
+A "connection pool" means Mongoose keeps multiple connections open to MongoDB.
+When your code does a database query, it grabs an available connection from the
+pool instead of opening a new one. This is faster because opening connections
+is expensive. maxPoolSize=50 means up to 50 simultaneous queries can run.
+
+If MongoDB disconnects (network issue, server restart), Mongoose automatically
+reconnects. The old code had process.exit(1) which would crash the server.
+Now it just logs a warning and waits for Mongoose to reconnect.
+
+
+--- backend/src/config/redis.js ---
+Redis connection using ioredis library.
+
+Redis is an in-memory data store. We use it for:
+  1. Caching feed results (so we don't re-run the expensive aggregation)
+  2. Socket.IO pub/sub adapter (so multiple server instances share events)
+
+The connection uses lazy connect (doesn't connect until first use) and has
+a retry strategy: retries 5 times with increasing delays, then stops.
+
+If Redis is not available, the app continues to work. Feed results are just
+fetched from MongoDB every time, and Socket.IO runs in single-instance mode.
+
+
+--- backend/src/config/cloudinary.js ---
+Cloudinary is a cloud image hosting service. When users upload photos:
+  1. Photo is uploaded to Cloudinary (not stored on our server)
+  2. Cloudinary returns a URL and a publicId
+  3. We store the URL (for displaying) and publicId (for deleting later)
+
+Cloudinary also handles image transformations (resize, quality optimization)
+automatically during upload.
+
+
+--- backend/src/config/firebase.js ---
+Firebase Admin SDK for sending push notifications.
+
+Requires a service account JSON file (downloaded from Firebase Console).
+If the file path isn't set, push notifications are silently disabled.
+This is intentional - you can develop without Firebase set up.
+
+
+--- backend/src/config/sentry.js ---
+Sentry is an error tracking service. When an unhandled error occurs:
+  1. Sentry captures the error, stack trace, and request context
+  2. Sends it to sentry.io where you can see it in a dashboard
+  3. Can alert you via email/Slack when new errors appear
+
+tracesSampleRate: 0.1 means 10% of requests are traced for performance
+monitoring. In development, 100% are traced.
+
+Sensitive data (authorization headers, cookies) is scrubbed before sending.
+
+
+--- backend/src/config/stripe.js ---
+Stripe is the payment processor for paid boosts.
+If STRIPE_SECRET_KEY is not set, the stripe client is null, and
+any attempt to purchase a boost will return "Payments not configured".
+
+
+================================================================================
+PART 3: BACKEND - DATABASE MODELS (MongoDB/Mongoose)
+================================================================================
+
+MongoDB stores data in "collections" (like tables in SQL). Each collection
+has a "schema" that defines the structure. Mongoose is the Node.js library
+that provides schemas, validation, and query building for MongoDB.
+
+
+--- backend/src/models/User.js ---
+The central model. Every person who uses the app has a User document.
+
+Fields:
+  email         String, unique, lowercase, trimmed
+                The user's email address. Used for OTP login.
+                "unique: true" creates a database index automatically.
+
+  googleId      String, sparse index
+                Google OAuth user ID. "sparse" means the index only includes
+                documents where this field exists (not all users have Google).
+
+  name          String, max 50 characters
+                Display name shown on profile cards.
+
+  age           Number, minimum 18, maximum 100
+                Age validation ensures no minors can register.
+
+  gender        String, enum ['male', 'female']
+                This determines the entire app experience:
+                - 'female' -> gets swipe UI (browse boys)
+                - 'male'   -> gets queue UI (see who liked them)
+
+  bio           String, max 300 characters
+                Short description shown on profile cards.
+
+  interests     Array of Strings
+                Tags like "Music", "Travel", "Fitness" etc.
+                Shown on profile cards.
+
+  photos        Array of { url: String, publicId: String }
+                - url: Cloudinary URL for displaying the image
+                - publicId: Cloudinary ID for deleting the image
+                Minimum 2 photos required for profile completion.
+
+  location      GeoJSON Point object
+                - type: always 'Point' (GeoJSON standard)
+                - coordinates: [longitude, latitude] (NOTE: lon first, NOT lat!)
+                - city: String (for display)
+                - state: String (for display)
+                The coordinates enable geo-spatial queries (find users near me).
+
+  preferences   Object
+                - ageMin: minimum age of matches to show (default 18)
+                - ageMax: maximum age of matches to show (default 50)
+                - maxDistance: maximum distance in km (default 50)
+
+  daysWithoutMatch   Number, default 0
+                Incremented daily by the cron job for all active boys.
+                Reset to 0 when a match occurs.
+                Used to calculate auto-boost tier.
+
+  boostLevel    String, enum ['none', 'bronze', 'silver', 'gold'], default 'none'
+                Current PAID boost level. Different from auto-boost.
+
+  boostExpiry   Date
+                When the paid boost expires. After this date, boostLevel
+                reverts to 'none' (done by the hourly cron job).
+
+  fcmToken      String
+                Firebase Cloud Messaging token. Each device has a unique token.
+                Used to send push notifications to the user's phone.
+
+  refreshToken  String
+                SHA-256 hash of the user's refresh token.
+                NOT stored in plain text (security measure).
+                Used to issue new access tokens when the old one expires.
+
+  isProfileComplete   Boolean, default false
+                Set to true when user has: name, age, gender, 2+ photos,
+                bio, and 1+ interests. Users with incomplete profiles
+                don't appear in the feed.
+
+  isActive      Boolean, default true
+                Can be set to false to hide user from feed without deleting.
+
+  timestamps    true (Mongoose option)
+                Automatically adds createdAt and updatedAt fields.
+
+Indexes (for query performance):
+  - location: '2dsphere' -> enables $geoNear queries (find nearby users)
+  - { gender, isActive, isProfileComplete } -> for feed filtering
+  - { boostLevel, boostExpiry } -> for expired boost cleanup
+  - { daysWithoutMatch: -1 } -> for feed sorting (descending)
+
+
+--- backend/src/models/Like.js ---
+Represents a girl liking (or skipping) a boy.
+
+Fields:
+  fromUser    ObjectId -> User (the girl who liked)
+  toUser      ObjectId -> User (the boy who was liked)
+  status      String, enum:
+              - 'pending'  -> girl liked, boy hasn't responded yet
+              - 'accepted' -> boy accepted, match created
+              - 'rejected' -> boy rejected, girl NOT notified
+              - 'skipped'  -> girl swiped left (skip, not a like)
+
+Indexes:
+  - { fromUser, toUser } UNIQUE -> prevents duplicate likes
+    If a girl tries to like the same boy twice, MongoDB throws error 11000.
+  - { toUser, status } -> fast queue lookup for boys
+    "Show me all pending likes where toUser = this boy's ID"
+
+
+--- backend/src/models/Match.js ---
+Created when a boy accepts a girl's like.
+
+Fields:
+  users     Array of 2 ObjectIds -> User
+            Always contains exactly 2 users (the girl and the boy).
+
+  timestamps -> createdAt = when the match happened
+
+Index:
+  - { users: 1 } -> fast lookup "find all matches containing this user ID"
+
+
+--- backend/src/models/Message.js ---
+Chat messages between matched users.
+
+Fields:
+  matchId   ObjectId -> Match
+            Which match/conversation this message belongs to.
+
+  sender    ObjectId -> User
+            Who sent this message.
+
+  text      String, max 2000 characters
+            The message content.
+
+  seen      Boolean, default false
+            Read receipt. Set to true when the recipient views the message.
+
+Index:
+  - { matchId, createdAt } -> fast retrieval of messages in a conversation
+    ordered by time.
+
+
+--- backend/src/models/Otp.js ---
+Temporary one-time passwords for email verification.
+
+Fields:
+  email     String (which email this OTP is for)
+  code      String (the 6-digit code)
+  expiresAt Date (when the code becomes invalid)
+
+Index:
+  - { expiresAt } with expireAfterSeconds: 0
+    This is a MongoDB TTL (Time-To-Live) index. MongoDB automatically
+    deletes documents after their expiresAt date passes.
+    So expired OTPs are cleaned up without any code needed.
+  - { email } -> fast lookup by email
+
+
+--- backend/src/models/Block.js ---
+When user A blocks user B.
+
+Fields:
+  blocker   ObjectId -> User (who did the blocking)
+  blocked   ObjectId -> User (who was blocked)
+
+Indexes:
+  - { blocker, blocked } UNIQUE -> can't block the same person twice
+  - { blocked, blocker } -> reverse lookup (who blocked me?)
+
+When a block is created, the safety service also:
+  - Deletes any existing match between the two users
+  - Deletes any pending likes between the two users
+
+
+--- backend/src/models/Report.js ---
+When a user reports another user for bad behavior.
+
+Fields:
+  reporter  ObjectId -> User
+  reported  ObjectId -> User
+  reason    String, enum: 'harassment', 'fake', 'inappropriate', 'spam', 'other'
+  details   String, max 500 chars (optional extra info)
+
+Reports are stored for admin review. No automatic action is taken.
+
+
+================================================================================
+PART 4: BACKEND - MIDDLEWARE
+================================================================================
+
+Middleware are functions that run BEFORE your route handler. They sit in the
+"middle" of the request pipeline. Each middleware can:
+  - Modify the request (add data, parse body)
+  - End the request (return error, unauthorized)
+  - Pass to the next middleware (call next())
+
+
+--- backend/src/middleware/auth.middleware.js ---
+JWT authentication. Runs on all protected routes.
+
+How it works:
+  1. Reads the "Authorization" header from the request
+  2. Expects format: "Bearer <token>"
+  3. Extracts the token part after "Bearer "
+  4. Calls verifyAccessToken(token) which does jwt.verify()
+     - If token is valid: returns { id, gender } from the token payload
+     - If token is expired: throws TokenExpiredError
+     - If token is tampered: throws JsonWebTokenError
+  5. Attaches decoded data to req.user = { id, gender }
+  6. Calls next() to continue to the route handler
+
+After this middleware runs, any route handler can access:
+  - req.user.id -> the authenticated user's MongoDB _id
+  - req.user.gender -> 'male' or 'female'
+
+
+--- backend/src/middleware/gender.middleware.js ---
+Gender-based access control. A "factory function" that returns middleware.
+
+Usage in routes/index.js:
+  router.use('/swipe', auth, requireGender('female'), swipeRoutes);
+  router.use('/queue', auth, requireGender('male'), queueRoutes);
+
+How it works:
+  1. requireGender('female') returns a middleware function
+  2. That middleware checks if req.user.gender === 'female'
+  3. If yes: calls next() (proceed)
+  4. If no: returns 403 Forbidden error
+
+This enforces the core app rule:
+  - Only girls can browse/swipe (swipe routes)
+  - Only boys can see queue/accept/reject (queue routes)
+  - Only boys can purchase boosts (boost routes)
+
+
+--- backend/src/middleware/validate.middleware.js ---
+Joi schema validation for request body and query parameters.
+
+How it works:
+  1. Takes a Joi schema as argument
+  2. Returns a middleware function
+  3. That middleware validates req.body (or req.query) against the schema
+  4. Options:
+     - abortEarly: false -> collect ALL errors, not just the first
+     - stripUnknown: true -> remove fields not in the schema
+  5. If validation fails: returns 400 with error messages
+  6. If passes: replaces req.body with the validated/cleaned value
+
+Example:
+  Schema: { email: Joi.string().email().required() }
+  Input:  { email: "test@test.com", hack: "drop table" }
+  Result: { email: "test@test.com" }  <- "hack" field stripped
+
+
+--- backend/src/middleware/sanitize.middleware.js ---
+NoSQL injection prevention.
+
+MongoDB uses $ prefix for operators: $gt (greater than), $ne (not equal),
+$where (arbitrary JavaScript), etc.
+
+Attack example without sanitization:
+  POST /auth/verify-otp
+  Body: { "email": {"$gt": ""}, "code": {"$gt": ""} }
+
+  This would match ANY email and ANY code in the database!
+  The attacker could verify without knowing the real OTP.
+
+How the sanitizer works:
+  1. Recursively walks through req.body, req.query, req.params
+  2. If any object key starts with '$', it removes that key
+  3. Handles nested objects and arrays
+
+After sanitization:
+  { "email": {"$gt": ""} } becomes { "email": {} } -> harmless
+
+
+--- backend/src/middleware/rateLimiter.middleware.js ---
+Rate limiting prevents abuse by limiting how many requests a client can make.
+
+Rate limiters defined:
+
+  globalLimiter:
+    - 1000 requests per 15 minutes per IP
+    - Applied to ALL API routes
+    - Prevents general API abuse
+
+  authLimiter:
+    - 10 requests per 15 minutes per IP
+    - Applied to signup, verify-otp, google auth
+    - Prevents brute force login attempts
+
+  otpSendLimiter:
+    - 3 requests per 15 minutes per EMAIL
+    - Applied to POST /auth/signup (sending OTP)
+    - Prevents spamming someone's email with OTP codes
+    - Key: "otp-send:user@email.com"
+
+  otpVerifyLimiter:
+    - 5 requests per 15 minutes per EMAIL
+    - Applied to POST /auth/verify-otp
+    - Prevents brute-forcing OTP codes
+    - 6-digit OTP = 1,000,000 possibilities
+    - At 5 attempts per 15 minutes, brute force is impossible
+    - Key: "otp:user@email.com"
+
+  likeLimiter:
+    - 100 requests per hour per USER
+    - Applied to POST /swipe/like
+    - Prevents a girl from mass-liking all boys
+
+  messageLimiter:
+    - 200 requests per hour per USER
+    - Applied to POST /messages
+    - Prevents message flooding/spam
+
+
+--- backend/src/middleware/upload.middleware.js ---
+Multer configuration for file uploads.
+
+Settings:
+  - storage: memoryStorage() -> files stored in RAM buffer (not disk)
+    We use memory because we immediately upload to Cloudinary
+  - fileFilter: only accepts image/jpeg, image/png, image/webp
+  - limits:
+    - fileSize: 5MB per file
+    - files: 6 maximum (matches max photos per user)
+
+Note: This only checks the MIME type header. The upload service also
+validates magic bytes (actual file content) for extra security.
+
+
+--- backend/src/middleware/error.middleware.js ---
+Global error handler. This is the LAST middleware in the chain.
+Express recognizes it as an error handler because it has 4 parameters
+(err, req, res, next).
+
+It catches all errors thrown by route handlers and transforms them
+into consistent JSON responses.
+
+Error types handled:
+  - Mongoose ValidationError -> 400 (bad input)
+  - Mongoose duplicate key (11000) -> 409 (conflict, already exists)
+  - Mongoose CastError -> 400 (invalid ObjectId format)
+  - JsonWebTokenError -> 401 (bad token)
+  - TokenExpiredError -> 401 (expired token)
+  - AppError (our custom) -> whatever statusCode was set
+  - Everything else -> 500 (internal server error)
+
+In production: returns { error: { code, message } }
+In development: also includes the stack trace for debugging
+
+
+================================================================================
+PART 5: BACKEND - ROUTES & CONTROLLERS
+================================================================================
+
+The pattern is: Route -> Controller -> Service
+
+  Route: defines the URL, HTTP method, and which middleware to apply
+  Controller: extracts data from the request, calls the service, sends response
+  Service: contains the actual business logic
+
+
+--- backend/src/routes/index.js ---
+The main router. Combines all sub-routers.
+
+Public routes (no auth needed):
+  /api/v1/auth/* -> authRoutes
+
+Protected routes (JWT required):
+  /api/v1/profile/*   -> profileRoutes   (any gender)
+  /api/v1/swipe/*     -> swipeRoutes     (female only)
+  /api/v1/queue/*     -> queueRoutes     (male only)
+  /api/v1/matches/*   -> matchRoutes     (any gender)
+  /api/v1/messages/*  -> messageRoutes   (any gender)
+  /api/v1/boost/*     -> boostRoutes     (male only)
+  /api/v1/report      -> safetyRoutes    (any gender)
+  /api/v1/block       -> safetyRoutes    (any gender)
+  /api/v1/account     -> accountRoutes   (any gender)
+
+
+--- AUTH ROUTES & CONTROLLER ---
+
+POST /api/v1/auth/signup
+  Rate limited: authLimiter + otpSendLimiter
+  Validates: { email: valid email }
+  Action: Generates 6-digit OTP, stores in DB, sends email
+  Response: { message: "OTP sent successfully" }
+
+POST /api/v1/auth/verify-otp
+  Rate limited: authLimiter + otpVerifyLimiter
+  Validates: { email: valid email, code: exactly 6 characters }
+  Action: Verifies OTP, creates user if new, issues tokens
+  Response: { accessToken, refreshToken, user: {...}, isNewUser: bool }
+
+POST /api/v1/auth/google
+  Rate limited: authLimiter
+  Validates: { idToken: string }
+  Action: Verifies Google ID token, creates user if new, issues tokens
+  Response: { accessToken, refreshToken, user: {...}, isNewUser: bool }
+
+POST /api/v1/auth/refresh-token
+  Validates: { refreshToken: string }
+  Action: Verifies refresh token, issues new token pair
+  Response: { accessToken, refreshToken }
+
+POST /api/v1/auth/logout (requires auth)
+  Action: Clears refresh token from database
+  Response: { message: "Logged out" }
+
+
+--- PROFILE ROUTES & CONTROLLER ---
+
+GET /api/v1/profile (requires auth)
+  Action: Returns the authenticated user's profile
+  Response: User object (without refreshToken)
+
+PUT /api/v1/profile (requires auth)
+  Validates: updateProfileSchema (name, age, gender, bio, interests, etc.)
+  Action: Updates allowed fields, recalculates isProfileComplete
+  Response: Updated user object
+
+POST /api/v1/profile/photos (requires auth)
+  Accepts: multipart/form-data with up to 6 images
+  Action: Validates magic bytes, uploads to Cloudinary, adds to user photos
+  Response: { photos: [...] }
+
+DELETE /api/v1/profile/photos/:publicId (requires auth)
+  Action: Deletes photo from Cloudinary and user's photos array
+  Response: { photos: [...] } (remaining photos)
+
+
+--- SWIPE ROUTES & CONTROLLER (girls only) ---
+
+GET /api/v1/swipe/feed (requires auth, female only)
+  Query params: cursor (pagination), limit (default 20)
+  Action: Runs the feed algorithm (see Part 19 for details)
+  Response: { profiles: [...], nextCursor: "..." }
+
+POST /api/v1/swipe/like (requires auth, female only)
+  Rate limited: likeLimiter
+  Validates: { userId: string }
+  Action: Creates Like(status=pending), sends push to boy, emits socket event
+  Response: { message: "Like sent" }
+
+POST /api/v1/swipe/skip (requires auth, female only)
+  Validates: { userId: string }
+  Action: Creates Like(status=skipped) - records the skip to avoid reshowing
+  Response: { message: "Skipped" }
+
+
+--- QUEUE ROUTES & CONTROLLER (boys only) ---
+
+GET /api/v1/queue (requires auth, male only)
+  Query params: page (default 1), limit (default 20)
+  Action: Gets pending likes for this boy, populated with girl profiles
+  Response: { likes: [...], page, totalPages, total, hasMore }
+
+POST /api/v1/queue/accept/:likeId (requires auth, male only)
+  Action: Sets like=accepted, creates Match, resets daysWithoutMatch,
+          sends push to girl, emits socket 'new-match' to both users
+  Response: { match: { _id, users: [...], createdAt } }
+
+POST /api/v1/queue/reject/:likeId (requires auth, male only)
+  Action: Sets like=rejected. Girl is NOT notified.
+  Response: { message: "Rejected" }
+
+
+--- MATCH ROUTES & CONTROLLER ---
+
+GET /api/v1/matches (requires auth)
+  Query params: page (default 1), limit (default 30)
+  Action: Single aggregation query to get matches with last message + unread count
+  Response: { matches: [...], page, totalPages, hasMore }
+
+
+--- MESSAGE ROUTES & CONTROLLER ---
+
+GET /api/v1/messages/:matchId (requires auth)
+  Query params: page (default 1), limit (default 50)
+  Action: Verifies user is a participant, returns paginated messages
+  Response: { messages: [...], page, totalPages, hasMore }
+
+POST /api/v1/messages (requires auth)
+  Rate limited: messageLimiter
+  Validates: { matchId: string, text: string (max 2000 chars) }
+  Action: Verifies participation, creates message, sends push, emits socket event
+  Response: Message object
+
+
+--- BOOST ROUTES & CONTROLLER (boys only) ---
+
+GET /api/v1/boost/plans (requires auth, male only)
+  Action: Returns available boost plans with prices
+  Response: { plans: [{ tier, price, duration, label }, ...] }
+
+POST /api/v1/boost/purchase (requires auth, male only)
+  Validates: { tier: 'bronze' | 'silver' | 'gold' }
+  Action: Creates Stripe checkout session
+  Response: { sessionId: "...", url: "https://checkout.stripe.com/..." }
+
+POST /api/v1/boost/webhook (NO auth - Stripe calls this)
+  Special: Uses raw body (not JSON parsed) for signature verification
+  Action: When Stripe confirms payment, activates the boost for the user
+
+
+--- SAFETY ROUTES & CONTROLLER ---
+
+POST /api/v1/report (requires auth)
+  Validates: { userId, reason: enum, details: optional }
+  Action: Creates Report document
+  Response: { message: "Report submitted" }
+
+POST /api/v1/block (requires auth)
+  Validates: { userId }
+  Action: Creates Block, deletes Match + Likes between the users
+  Response: { message: "User blocked" }
+
+
+--- ACCOUNT ROUTES & CONTROLLER ---
+
+DELETE /api/v1/account (requires auth)
+  Validates: { confirmation: "DELETE_MY_ACCOUNT" }
+  Action: Disconnects user's sockets, deletes ALL user data:
+          - Photos from Cloudinary
+          - Messages in all matches
+          - All matches
+          - All likes (sent and received)
+          - All blocks
+          - Reports filed by user
+          - User document
+          - Redis cache
+  Response: { message: "Account deleted successfully" }
+
+
+================================================================================
+PART 6: BACKEND - SERVICES (Business Logic)
+================================================================================
+
+--- backend/src/services/auth.service.js ---
+
+sendOtp(email):
+  1. Generate cryptographically random 6-digit code using crypto.randomInt()
+  2. Calculate expiry time: now + OTP_EXPIRY_MINUTES (default 5)
+  3. Delete any existing OTPs for this email (user requested new one)
+  4. Create new OTP document in database
+  5. Send email with the code (or log to console in dev mode)
+
+verifyOtp(email, code):
+  1. Find OTP document matching email AND code
+  2. If not found -> "Invalid or expired OTP"
+  3. If found but expired -> "OTP expired"
+  4. Delete all OTPs for this email (clean up)
+  5. Find user by email, or create new user if not found
+  6. Call issueTokens() to generate access + refresh tokens
+  7. Return { accessToken, refreshToken, user, isNewUser }
+
+googleLogin(idToken):
+  1. Verify the Google ID token using Google's library
+     (This contacts Google's servers to validate the token is real)
+  2. Extract: googleId, email, name from the token
+  3. Find user by googleId OR email
+  4. If not found: create new user
+  5. If found but no googleId: link Google account
+  6. Call issueTokens()
+
+issueTokens(user, isNewUser):
+  1. Generate access token: JWT containing { id, gender }, expires in 15 min
+  2. Generate refresh token: JWT containing { id }, expires in 7 days
+  3. Hash the refresh token with SHA-256
+  4. Store the HASH in the database (not the plain token)
+  5. Return both tokens and user data
+
+  WHY hash the refresh token?
+  If an attacker gains read access to your database (SQL injection, backup leak),
+  they see hashed tokens which are useless. They can't create valid JWTs from
+  a hash. Without hashing, they'd have valid refresh tokens for every user.
+
+refreshTokens(token):
+  1. Verify the JWT is valid (not expired, not tampered)
+  2. Find user by ID from the token
+  3. Hash the incoming token with SHA-256
+  4. Compare with stored hash
+  5. If mismatch -> possible token reuse attack!
+     - Clear the user's stored token (invalidate ALL sessions)
+     - Return error
+  6. If match -> issue new token pair, store new hash
+
+  TOKEN ROTATION: Each refresh generates a NEW refresh token.
+  The old one is invalidated. If an attacker steals a refresh token
+  and the real user also uses it, one of them will get a mismatch,
+  triggering the security measure of invalidating everything.
+
+
+--- backend/src/services/swipe.service.js ---
+(See Part 19 for detailed feed algorithm explanation)
+
+getFeed(userId, cursor, limit):
+  The core algorithm. Returns profiles for a girl to swipe on.
+
+like(fromUserId, toUserId):
+  1. Validate: can't like yourself
+  2. Validate: target must exist and be male
+  3. Create Like with status='pending'
+  4. If duplicate (error 11000) -> "Already liked this user"
+  5. Invalidate feed cache for this girl
+  6. Send push notification to the boy (async, doesn't block response)
+
+skip(fromUserId, toUserId):
+  1. Validate: can't skip yourself
+  2. Create Like with status='skipped'
+  3. If duplicate: just return success (no error)
+  4. Invalidate feed cache
+
+
+--- backend/src/services/queue.service.js ---
+
+getQueue(userId, page, limit):
+  1. Query: Like.find({ toUser: userId, status: 'pending' })
+  2. Populate fromUser with: name, age, bio, photos, interests, location
+  3. Sort by createdAt descending (newest first)
+  4. Apply pagination (skip + limit)
+  5. Also count total for pagination metadata
+
+accept(userId, likeId):
+  1. Find the Like by ID
+  2. Verify it belongs to this boy (toUser === userId)
+  3. Verify it's still pending (not already processed)
+  4. Set status to 'accepted'
+  5. Create new Match with both user IDs
+  6. Reset boy's daysWithoutMatch to 0 (stops auto-boost)
+  7. Invalidate girl's feed cache
+  8. Send push notification to the girl: "It's a Match!"
+  9. Populate and return the match
+
+reject(userId, likeId):
+  1. Same validation as accept
+  2. Set status to 'rejected'
+  3. Return success. Girl is NEVER notified of rejection.
+
+
+--- backend/src/services/match.service.js ---
+
+getMatches(userId, page, limit):
+  Uses a SINGLE MongoDB aggregation pipeline instead of N+1 queries.
+
+  Old approach (N+1 problem):
+    1. Find all matches for user (1 query)
+    2. For EACH match, find last message (N queries)
+    3. For EACH match, count unread messages (N queries)
+    = 1 + 2N queries. With 100 matches = 201 queries!
+
+  New approach (single aggregation):
+    1. $match: find matches containing this user
+    2. $lookup messages: get last message for each match (sub-pipeline)
+    3. $lookup messages: count unread for each match (sub-pipeline)
+    4. $lookup users: populate user details
+    5. $addFields: reshape data
+    6. $sort by most recent activity
+    7. $skip + $limit for pagination
+    = 1 query total, no matter how many matches!
+
+
+--- backend/src/services/message.service.js ---
+
+getMessages(matchId, userId, page, limit):
+  1. Verify match exists
+  2. Verify user is a participant in the match
+  3. Query messages sorted by createdAt descending (newest first)
+  4. Apply pagination (skip + limit)
+  5. Reverse the array for display (so oldest is first in the chat)
+
+sendMessage(matchId, senderId, text):
+  1. Verify match exists
+  2. Verify sender is a participant
+  3. Create message document
+  4. Find the other user (recipient)
+  5. Send push notification with message preview (first 100 chars)
+
+markSeen(matchId, userId):
+  Update all messages in this match that:
+  - Were NOT sent by this user (messages FROM the other person)
+  - Are not yet seen
+  Set seen = true.
+
+
+--- backend/src/services/boost.service.js ---
+
+BOOST_PLANS:
+  bronze: $4.99, 1 day
+  silver: $9.99, 3 days
+  gold:   $19.99, 7 days
+
+getPlans(): Returns the list of available plans.
+
+purchaseBoost(userId, tier):
+  1. Validate tier exists
+  2. Create Stripe Checkout Session:
+     - payment_method_types: ['card']
+     - line_items: product name + price
+     - metadata: { userId, tier, duration } (passed back in webhook)
+     - success_url / cancel_url
+  3. Return the session ID and checkout URL
+  4. Flutter opens this URL in a browser
+  5. User pays on Stripe's hosted page
+
+handleStripeWebhook(rawBody, signature):
+  1. Verify webhook signature (proves it's really from Stripe)
+  2. If event type is 'checkout.session.completed':
+     - Extract userId, tier, duration from metadata
+     - Call activateBoost()
+
+activateBoost(userId, tier, durationDays):
+  Update user:
+  - boostLevel = tier
+  - boostExpiry = now + durationDays
+
+
+--- backend/src/services/safety.service.js ---
+
+reportUser(reporterId, reportedId, reason, details):
+  1. Validate: can't report yourself
+  2. Create Report document
+  (No automatic action - admins review reports)
+
+blockUser(blockerId, blockedId):
+  1. Validate: can't block yourself
+  2. Create Block document (unique index prevents duplicates)
+  3. Delete any Match between the two users
+  4. Delete any Likes between the two users (both directions)
+  This effectively erases all connection between the users.
+
+
+--- backend/src/services/account.service.js ---
+
+deleteAccount(userId):
+  Complete data deletion in this order:
+  1. Delete all photos from Cloudinary (parallel, tolerates failures)
+  2. Find all matches to get their IDs
+  3. In parallel:
+     - Delete all messages in those matches
+     - Delete all matches
+     - Delete all likes (sent AND received)
+     - Delete all blocks (both directions)
+     - Delete all reports filed BY this user (keeps reports AGAINST them)
+     - Invalidate Redis cache
+  4. Delete the User document itself
+
+
+--- backend/src/services/notification.service.js ---
+
+sendPush(userId, title, body, data, retries):
+  1. Find user and get their FCM token
+  2. If no token: silently return (user hasn't registered device)
+  3. If Firebase not initialized: silently return
+  4. Send push notification via Firebase Admin SDK:
+     - Android: high priority, custom channel ID
+     - iOS: sound enabled, badge count
+  5. If token is invalid/expired: clear it from user document
+  6. On transient failure: retry up to 2 times with increasing delay
+     (1 second, then 2 seconds)
+
+
+--- backend/src/services/upload.service.js ---
+
+validateImageContent(buffer):
+  Checks the first 12 bytes of the file against known "magic bytes":
+  - JPEG: starts with FF D8 FF
+  - PNG: starts with 89 50 4E 47
+  - WebP: starts with RIFF....WEBP
+
+  WHY? The upload middleware checks the MIME type header, but that's
+  set by the client and can be faked. An attacker could upload a
+  malicious script file with a fake "image/jpeg" MIME type. Checking
+  the actual bytes ensures it's really an image.
+
+uploadImage(buffer, userId):
+  1. Validate magic bytes
+  2. Upload to Cloudinary as a stream
+  3. Cloudinary applies transformations:
+     - Resize: max 800x1000 pixels
+     - Quality: auto (Cloudinary optimizes)
+     - Format: auto (serves WebP to supporting browsers)
+  4. Return { url, publicId }
+
+
+================================================================================
+PART 7: BACKEND - UTILITIES
+================================================================================
+
+--- backend/src/utils/AppError.js ---
+Custom error class extending built-in Error.
+
+Properties:
+  - message: human-readable error message
+  - statusCode: HTTP status code (400, 401, 403, 404, 500, etc.)
+  - isOperational: true (distinguishes from programming bugs)
+
+Usage: throw new AppError('User not found', 404);
+
+The error middleware checks isOperational to decide whether to log the error.
+Operational errors (bad input, not found) are expected. Non-operational errors
+(null pointer, undefined function) are bugs that should be logged in detail.
+
+
+--- backend/src/utils/catchAsync.js ---
+Wraps async route handlers so errors are automatically caught.
+
+Without catchAsync:
+  router.get('/profile', async (req, res, next) => {
+    try {
+      const profile = await getProfile(req.user.id);
+      res.json(profile);
+    } catch (err) {
+      next(err);  // Must remember this or errors crash the server!
+    }
+  });
+
+With catchAsync:
+  router.get('/profile', catchAsync(async (req, res) => {
+    const profile = await getProfile(req.user.id);
+    res.json(profile);
+  }));
+
+catchAsync wraps the function and catches any rejected promise,
+passing the error to next() automatically.
+
+
+--- backend/src/utils/logger.js ---
+Structured JSON logging using Pino.
+
+Why Pino over console.log?
+  - JSON format: parseable by log aggregators (Datadog, ELK, CloudWatch)
+  - Levels: error, warn, info, debug (can filter by level)
+  - Redaction: automatically strips sensitive data from logs
+  - Performance: Pino is the fastest Node.js logger (async I/O)
+
+Configuration:
+  - Production: JSON output, 'info' level (no debug messages)
+  - Development: pretty-printed colored output, 'debug' level
+  - Redacted paths: authorization header, password, refreshToken
+
+Example output (production):
+  {"level":30,"time":1234567890,"msg":"Server started","port":5000,"env":"production"}
+
+
+--- backend/src/utils/token.js ---
+
+signAccessToken(userId, gender):
+  Creates a JWT with payload { id: userId, gender: gender }
+  Signed with JWT_ACCESS_SECRET
+  Expires in JWT_ACCESS_EXPIRY (default 15 minutes)
+
+  Why include gender? So the auth middleware can attach it to req.user
+  without an extra database query on every request.
+
+signRefreshToken(userId):
+  Creates a JWT with payload { id: userId }
+  Signed with JWT_REFRESH_SECRET (different key from access!)
+  Expires in JWT_REFRESH_EXPIRY (default 7 days)
+
+  Why a different secret? If the access secret is compromised,
+  the refresh token is still safe (and vice versa).
+
+verifyAccessToken(token):
+  Calls jwt.verify() with the access secret.
+  Returns the decoded payload or throws an error.
+
+verifyRefreshToken(token):
+  Same but with the refresh secret.
+
+hashRefreshToken(token):
+  SHA-256 hash of the token string.
+  Used for secure storage in the database.
+  SHA-256 is sufficient because refresh tokens are already high-entropy
+  (they're JWTs with random data). We don't need bcrypt's slow hashing
+  which is designed for low-entropy passwords.
+
+
+--- backend/src/utils/otp.js ---
+
+generateOtp():
+  Uses crypto.randomInt(100000, 999999) to generate a random 6-digit number.
+  crypto.randomInt is cryptographically secure (unlike Math.random).
+
+sendOtpEmail(email, code):
+  1. In development with no SMTP configured: logs the OTP to console
+     (so you can test without email setup)
+  2. In production: sends an HTML email via nodemailer:
+     - From: "Reverse Match" <your-email>
+     - Subject: "Your Verification Code"
+     - Body: styled HTML with the 6-digit code
+
+  The transporter is created once and reused (lazy singleton pattern).
+
+
+--- backend/src/utils/cache.js ---
+Redis cache helper functions. All functions fail silently if Redis is down.
+
+cacheGet(key):
+  Get a cached value. Returns parsed JSON or null.
+
+cacheSet(key, value, ttlSeconds):
+  Store a value with expiration. Default TTL: 300 seconds (5 minutes).
+  Value is JSON.stringify'd before storing.
+
+cacheDel(key):
+  Delete a specific cache key.
+
+cacheDelPattern(pattern):
+  Delete all keys matching a glob pattern (e.g., "feed:*").
+  Uses SCAN (not KEYS) to avoid blocking Redis with large keyspaces.
+
+
+================================================================================
+PART 8: BACKEND - SOCKET.IO (Real-time Chat)
+================================================================================
+
+Socket.IO enables bidirectional real-time communication. Unlike HTTP where the
+client always initiates, with WebSockets the server can push data to clients.
+
+--- backend/src/socket/index.js ---
+
+initSocket(httpServer, redisClient):
+  1. Create Socket.IO server attached to the HTTP server
+  2. Configure CORS (same rules as Express)
+  3. Set maxHttpBufferSize (64KB default) - limits message payload size
+  4. If Redis is available: create Redis adapter
+
+     WHY Redis adapter?
+     Without it, if you have 2 server instances:
+     - User A connects to Server 1
+     - User B connects to Server 2
+     - User A sends a message to User B
+     - Server 1 has no idea User B exists (they're on Server 2!)
+
+     With Redis adapter:
+     - Server 1 publishes the event to Redis
+     - Server 2 subscribes to Redis and receives the event
+     - Server 2 sends it to User B
+     - Now both servers share real-time events!
+
+  5. JWT authentication middleware for sockets:
+     - Client sends token in socket.handshake.auth.token
+     - Server verifies the JWT
+     - Attaches user data to socket.user
+     - If invalid: connection rejected
+
+  6. On connection:
+     - Join a "personal room" with the user's ID
+       This means io.to(userId).emit(...) works even without
+       tracking socket IDs manually
+     - Set up chat handlers
+     - On disconnect: log it
+
+--- backend/src/socket/chat.handler.js ---
+
+Events the CLIENT sends:
+
+  'join-room' (matchId):
+    Client wants to enter a chat room.
+    Server validates: match exists AND client is a participant.
+    If valid: socket.join(matchId)
+    Now client receives all events emitted to that room.
+
+  'leave-room' (matchId):
+    Client leaves the chat room (navigating away from chat screen).
+
+  'send-message' ({ matchId, text }):
+    Client sends a chat message.
+    Server validates:
+    - matchId is a non-empty string
+    - text is a non-empty string
+    - text is under 2000 characters
+    Then: saves to database, broadcasts to all in the room.
+
+    io.to(matchId).emit('new-message', message)
+    This sends to ALL sockets in the room, INCLUDING the sender.
+    The sender uses this as confirmation that the message was saved.
+
+  'typing-start' (matchId):
+    Client started typing. Server broadcasts to others in the room.
+    (NOT to the sender - uses socket.to() instead of io.to())
+
+  'typing-stop' (matchId):
+    Client stopped typing.
+
+  'mark-seen' ({ matchId }):
+    Client has read the messages. Server:
+    1. Updates all unread messages in DB (seen = true)
+    2. Broadcasts 'messages-seen' to others in the room
+
+Events the SERVER sends:
+
+  'new-message': A message was sent in a room you're in
+  'user-typing': Someone started typing in your chat
+  'user-stopped-typing': Someone stopped typing
+  'messages-seen': Someone read your messages (blue checkmarks)
+  'new-like': (sent to boy's personal room) Someone liked your profile
+  'new-match': (sent to both users' rooms) A match was created
+  'error': Something went wrong with your last action
+
+
+================================================================================
+PART 9: BACKEND - CRON JOBS
+================================================================================
+
+--- backend/src/jobs/dailyBoost.job.js ---
+
+Uses node-cron to schedule recurring tasks.
+Cron syntax: "minute hour day month weekday"
+
+Job 1: Daily boost increment
+  Schedule: "0 0 * * *" = every day at midnight UTC
+
+  What it does:
+  For all male users who are active and have complete profiles,
+  increment daysWithoutMatch by 1.
+
+  This is BATCHED: processes 5000 users at a time to avoid
+  overwhelming MongoDB with a single massive update on millions of users.
+
+  The batch uses cursor-based pagination (lastId) to iterate through
+  all qualifying users:
+    1. Find 5000 users where _id > lastId
+    2. Update those 5000 users: daysWithoutMatch += 1
+    3. Remember the last _id
+    4. Repeat until no more users
+
+  Why this matters:
+  daysWithoutMatch determines the auto-boost tier:
+    0-6 days:   none   (normal visibility)
+    7-14 days:  bronze (higher in feed)
+    15-24 days: silver (even higher)
+    25+ days:   gold   (top of feed)
+
+  This ensures boys who haven't been getting matches get more visible
+  over time, giving everyone a chance.
+
+Job 2: Expired boost cleanup
+  Schedule: "0 * * * *" = every hour at minute 0
+
+  What it does:
+  Find all users where:
+  - boostLevel is NOT 'none' (they have a paid boost)
+  - boostExpiry is in the past (the boost has expired)
+  Set boostLevel back to 'none' and clear boostExpiry.
+
+
+================================================================================
+PART 10: FLUTTER - INFRASTRUCTURE & CORE
+================================================================================
+
+The Flutter app uses a clean architecture approach:
+  core/       -> shared infrastructure (networking, storage, routing)
+  shared/     -> shared models and widgets used across features
+  features/   -> feature modules, each with data/domain/presentation layers
+
+State management: Riverpod (provider-based, compile-safe)
+Navigation: GoRouter (declarative, URL-based routing)
+
+
+--- reverse_match/lib/main.dart ---
+App entry point.
+
+1. WidgetsFlutterBinding.ensureInitialized() - required before async work in main
+2. Wraps the app in ProviderScope (Riverpod's root widget)
+3. Wraps in runZonedGuarded to catch ALL uncaught errors
+4. Sets FlutterError.onError for framework-level errors
+5. Sentry integration is scaffolded (commented out until added to pubspec)
+6. Firebase init is scaffolded (commented out until added to pubspec)
+
+ReverseMatchApp widget:
+  - Uses MaterialApp.router (GoRouter integration)
+  - Light + dark theme support (follows system setting)
+  - Debug banner disabled
+
+
+--- reverse_match/lib/core/constants/api_endpoints.dart ---
+All API URLs in one place. Uses static const strings and methods.
+
+Why centralize URLs?
+  - Change base URL in one place for production
+  - No typos in URLs scattered across the codebase
+  - Easy to see all available endpoints
+
+
+--- reverse_match/lib/core/constants/app_constants.dart ---
+App-wide constants:
+  - minPhotos: 2 (required for profile)
+  - maxPhotos: 6
+  - maxBioLength: 300
+  - minAge: 18
+  - otpLength: 6
+  - otpResendSeconds: 60 (countdown before resend allowed)
+  - feedPageSize: 20
+  - messagePageSize: 50
+  - availableInterests: 20 predefined tags (Music, Travel, etc.)
+
+
+--- reverse_match/lib/core/constants/storage_keys.dart ---
+Key names used in secure storage and shared preferences.
+Prevents typos when accessing stored values.
+
+
+--- reverse_match/lib/core/network/dio_client.dart ---
+HTTP client setup using Dio library.
+
+Configuration:
+  - Base URL: http://localhost:5000/api/v1
+  - Connect timeout: 15 seconds
+  - Receive timeout: 15 seconds
+  - Content-Type: application/json
+
+INTERCEPTOR (the key part):
+  onRequest:
+    Before every HTTP request, reads the access token from secure storage
+    and adds it as "Authorization: Bearer <token>" header.
+
+  onError (401 handling):
+    If ANY request returns 401 (unauthorized):
+    1. Read the refresh token from storage
+    2. Call /auth/refresh-token with a SEPARATE Dio instance
+       (separate to avoid infinite loop - the main dio would
+        add the expired token again!)
+    3. If refresh succeeds:
+       - Save new tokens to storage
+       - Retry the original failed request with the new token
+    4. If refresh fails:
+       - Clear all tokens (user must login again)
+       - Return UnauthorizedException
+
+  This means the user NEVER sees token expiry. Access tokens expire
+  every 15 minutes but are silently refreshed in the background.
+
+
+--- reverse_match/lib/core/network/api_result.dart ---
+A sealed class for representing API call results:
+
+  sealed class ApiResult<T>
+    |-- Success<T>(T data)
+    |-- Failure<T>(AppException exception)
+
+Usage with Dart 3 pattern matching:
+  final result = await repo.getProfile();
+  switch (result) {
+    case Success(:final data):
+      // use data
+    case Failure(:final exception):
+      // show exception.message
+  }
+
+This forces EVERY call site to handle both success and failure.
+You literally can't forget to handle errors because the compiler
+will warn about non-exhaustive switch.
+
+
+--- reverse_match/lib/core/network/api_exceptions.dart ---
+Exception hierarchy:
+  AppException (base) - message + optional statusCode
+    |-- NetworkException (no internet)
+    |-- ServerException (server returned an error)
+    |-- UnauthorizedException (401, session expired)
+    |-- TimeoutException (request took too long)
+
+
+--- reverse_match/lib/core/router/app_router.dart ---
+GoRouter configuration with authentication-aware redirect logic.
+
+The redirect function runs on EVERY navigation. It decides whether
+the user should be allowed to see the requested page:
+
+  1. If auth state is Initial or Loading:
+     Stay on splash screen (show loading animation)
+
+  2. If auth state is Unauthenticated or Error:
+     Allow: splash, welcome, login, otp screens
+     Redirect everything else to /welcome
+
+  3. If auth state is OtpSent:
+     Redirect to /otp screen (user needs to verify)
+
+  4. If auth state is Authenticated:
+     - If profile incomplete and no gender set -> /profile-setup
+     - If on any auth page -> redirect to /home
+     - Otherwise: allow navigation
+
+Main app shell (StatefulShellRoute.indexedStack):
+  Bottom navigation bar with 3 tabs:
+    Tab 0: /home (Girl swipe or Boy queue, based on gender)
+    Tab 1: /matches (Conversations list)
+    Tab 2: /settings (Profile, boost, logout)
+
+  indexedStack means all 3 tabs keep their state when switching.
+  (As opposed to rebuilding each tab on every switch)
+
+Additional routes (not in bottom nav):
+  /chat/:matchId - Chat screen (accepts matchId parameter)
+  /edit-profile - Edit profile screen
+  /boost - Boost purchase screen
+
+
+--- reverse_match/lib/core/socket/socket_service.dart ---
+Socket.IO client wrapper.
+
+connect():
+  1. Get access token from secure storage
+  2. Create socket connection to the backend
+  3. Configure: websocket transport, auth token, auto-reconnection
+
+Methods:
+  joinRoom(roomId)  - emit 'join-room' (enter a chat)
+  leaveRoom(roomId) - emit 'leave-room' (exit a chat)
+  sendMessage(matchId, text) - emit 'send-message'
+  startTyping(matchId) - emit 'typing-start'
+  stopTyping(matchId)  - emit 'typing-stop'
+  markSeen(matchId)    - emit 'mark-seen'
+  on(event, callback)  - listen for server events
+  off(event)           - stop listening
+  disconnect()         - close connection
+
+The socket service is a Riverpod provider, so it's created once
+and shared across the entire app.
+
+
+--- reverse_match/lib/core/storage/secure_storage_service.dart ---
+Uses flutter_secure_storage which encrypts data:
+  - iOS: stored in Keychain
+  - Android: stored in EncryptedSharedPreferences (AES-256)
+
+Stored data:
+  - Access token
+  - Refresh token
+  - User ID
+  - User gender
+
+Methods are straightforward: save, get, clear for each piece of data.
+Uses Future.wait() for parallel operations when saving/clearing multiple values.
+
+
+--- reverse_match/lib/core/storage/local_storage_service.dart ---
+Uses SharedPreferences for NON-sensitive preferences:
+  - Has the user seen the onboarding screens?
+  - Is the profile complete?
+
+These are not encrypted because they're not sensitive.
+An attacker gaining access to "has seen onboarding" is harmless.
+
+
+--- reverse_match/lib/core/theme/app_colors.dart ---
+Color palette for the app:
+  Primary:   #E91E63 (pink - the main brand color)
+  Secondary: #6C63FF (purple)
+
+  Swipe colors:
+    Like green: #4CAF50
+    Nope red:   #E53935
+
+  Boost colors:
+    Bronze: #CD7F32
+    Silver: #C0C0C0
+    Gold:   #FFD700
+
+  Dark theme:
+    Background: #121212
+    Surface:    #1E1E1E
+
+
+--- reverse_match/lib/core/theme/app_theme.dart ---
+Material 3 theme configuration for both light and dark modes.
+
+Light theme:
+  - Seed color: pink primary
+  - White background, light surface
+  - Elevated buttons: pink background, white text, 52px height, rounded
+  - Input fields: filled with light grey, no border, focus border = pink
+  - Cards: elevation 2, rounded corners 16px
+
+Dark theme:
+  - Same structure but dark colors
+  - Primary becomes lighter pink (#FF6090) for contrast on dark background
+
+
+--- reverse_match/lib/core/extensions/context_extensions.dart ---
+Convenience extensions on BuildContext:
+  context.theme         -> Theme.of(context)
+  context.colorScheme   -> theme.colorScheme
+  context.textTheme     -> theme.textTheme
+  context.screenWidth   -> MediaQuery.sizeOf(context).width
+  context.screenHeight  -> MediaQuery.sizeOf(context).height
+  context.showSnackBar(message, isError) -> shows a floating snack bar
+
+
+--- reverse_match/lib/core/utils/validators.dart ---
+Form field validation functions (return null if valid, error string if invalid):
+  email(value) - required, regex check
+  name(value)  - required, minimum 2 characters
+  age(value)   - required, integer, 18-100
+  bio(value)   - max 300 characters (optional)
+  otp(value)   - required, exactly 6 digits
+
+
+--- reverse_match/lib/core/utils/date_utils.dart ---
+Date formatting for display:
+  formatTimestamp(dateTime):
+    < 1 minute ago:  "Just now"
+    < 1 hour ago:    "5m ago"
+    Today:           "3:45 PM"
+    Yesterday:       "Yesterday"
+    This week:       "Tuesday"
+    Older:           "Mar 5"
+
+  formatMessageTime(dateTime):
+    Always: "3:45 PM" format
+
+  formatDateSeparator(dateTime):
+    "Today", "Yesterday", or "March 5, 2026"
+
+
+--- reverse_match/lib/core/services/firebase_messaging_service.dart ---
+FCM token registration service (scaffolded, ready to wire up).
+
+When fully enabled, this:
+  1. Requests notification permission (iOS shows a dialog)
+  2. Gets the FCM device token from Firebase
+  3. Sends the token to the backend via PUT /profile { fcmToken: "..." }
+  4. Listens for token refresh (tokens change periodically) and re-registers
+
+The token is what the backend uses to send push notifications to THIS device.
+
+
+================================================================================
+PART 11: FLUTTER - SHARED MODELS
+================================================================================
+
+--- reverse_match/lib/shared/models/user_model.dart ---
+
+UserModel - represents a user profile.
+  id:               String (MongoDB _id)
+  email:            String?
+  name:             String?
+  age:              int?
+  gender:           String? ('male' or 'female')
+  bio:              String?
+  interests:        List<String>
+  photos:           List<PhotoModel>
+  location:         LocationModel?
+  preferences:      PreferencesModel?
+  daysWithoutMatch: int (default 0)
+  boostLevel:       String (default 'none')
+  isProfileComplete: bool (default false)
+  createdAt:        DateTime?
+
+  firstPhoto getter: returns URL of first photo (or empty string)
+
+  fromJson factory handles both '_id' and 'id' keys because
+  MongoDB returns '_id' but some API responses might use 'id'.
+
+PhotoModel:
+  url:      String (Cloudinary URL)
+  publicId: String (for deletion)
+
+LocationModel:
+  coordinates: List<double> [longitude, latitude]
+  city:        String?
+  state:       String?
+
+PreferencesModel:
+  ageMin:      int (default 18)
+  ageMax:      int (default 50)
+  maxDistance:  int (default 50 km)
+
+
+--- reverse_match/lib/shared/models/like_model.dart ---
+
+LikeModel - a like from a girl, shown in the boy's queue.
+  id:        String
+  fromUser:  UserModel (the girl who liked)
+  status:    String ('pending', 'accepted', 'rejected')
+  createdAt: DateTime
+
+
+--- reverse_match/lib/shared/models/match_model.dart ---
+
+MatchModel - a mutual match.
+  id:          String
+  users:       List<UserModel> (always 2 users)
+  lastMessage: MessagePreview? (for the matches list)
+  unreadCount: int
+  createdAt:   DateTime
+
+  otherUser(myId) method: returns the OTHER user in the match
+  (the one who isn't "me"). Used to show their name/photo.
+
+MessagePreview:
+  text:      String
+  sender:    String (user ID)
+  seen:      bool
+  createdAt: DateTime
+
+
+--- reverse_match/lib/shared/models/message_model.dart ---
+
+MessageModel - a single chat message.
+  id:        String
+  matchId:   String
+  sender:    String (user ID)
+  text:      String
+  seen:      bool
+  createdAt: DateTime
+
+
+================================================================================
+PART 12: FLUTTER - SHARED WIDGETS
+================================================================================
+
+--- reverse_match/lib/shared/widgets/app_button.dart ---
+Reusable button widget.
+  Props: label, onPressed, isLoading, isOutlined, icon
+
+  When isLoading=true: shows a small CircularProgressIndicator
+  When isOutlined=true: uses OutlinedButton style
+  When icon is set: shows icon + text in a row
+  When onPressed is null: button is disabled (greyed out)
+
+
+--- reverse_match/lib/shared/widgets/app_text_field.dart ---
+Reusable text input widget.
+  Props: controller, hintText, labelText, validator, keyboardType,
+         obscureText, maxLines, maxLength, prefixIcon, suffixIcon,
+         onChanged, readOnly
+
+  Just a TextFormField with consistent styling from the theme.
+
+
+--- reverse_match/lib/shared/widgets/app_cached_image.dart ---
+Network image with loading placeholder and error fallback.
+
+  Uses CachedNetworkImage which:
+  - Downloads the image once and caches it on disk
+  - Shows a shimmer placeholder while loading
+  - Shows a person icon on error
+
+  Can be wrapped with optional borderRadius (ClipRRect).
+
+
+--- reverse_match/lib/shared/widgets/photo_carousel.dart ---
+Swipeable photo gallery with page indicator dots.
+
+  Uses PageView.builder for horizontal scrolling.
+  SmoothPageIndicator shows white dots at the bottom.
+  If no photos: shows a grey container with person icon.
+
+
+--- reverse_match/lib/shared/widgets/interest_chip.dart ---
+Animated selectable tag chip.
+
+  When selected: pink background, white text, bold
+  When unselected: grey background, dark text, normal
+  Animates the color change over 200ms.
+  Used in profile setup and edit profile for interest selection.
+
+
+--- reverse_match/lib/shared/widgets/empty_state_widget.dart ---
+Centered display for empty or error states.
+
+  Shows: large grey icon, title text, optional subtitle,
+         optional action button (e.g., "Retry")
+
+  Used in: feed (no more profiles), queue (waiting for likes),
+           matches (no matches yet), errors.
+
+
+================================================================================
+PART 13: FLUTTER - FEATURES
+================================================================================
+
+--- SPLASH FEATURE ---
+File: features/splash/presentation/screens/splash_screen.dart
+
+The first screen shown when the app opens.
+  1. Fade-in animation of the logo (heart icon + "Reverse Match" text)
+  2. After 2 seconds: calls checkAuthStatus()
+     - Reads stored tokens from secure storage
+     - If token exists and userId exists:
+       -> Connects socket
+       -> Sets state to AuthAuthenticated
+       -> Router redirects to /home
+     - If no token:
+       -> Sets state to AuthUnauthenticated
+       -> Router redirects to /welcome
+
+
+--- ONBOARDING FEATURE ---
+File: features/onboarding/presentation/screens/welcome_screen.dart
+
+3-page introduction carousel shown to first-time users.
+
+  Page 1: "Find Your Match" - heart icon
+  Page 2: "Girls Choose First" - female icon, explains the concept
+  Page 3: "Match & Chat" - chat icon
+
+  "Skip" button in top-right
+  "Next" button at bottom (becomes "Get Started" on last page)
+  Page indicator dots at bottom (SmoothPageIndicator)
+
+  When completed: saves onboarding_seen flag and navigates to /login
+
+
+--- AUTH FEATURE ---
+
+auth_repository.dart:
+  sendOtp(email):
+    POST /auth/signup with { email }
+    Returns Success("OTP sent") or Failure with error message
+
+  verifyOtp(email, code):
+    POST /auth/verify-otp with { email, code }
+    On success: saves tokens + userId + gender to secure storage
+    Returns Success(AuthResult) or Failure
+
+  googleSignIn(idToken):
+    POST /auth/google with { idToken }
+    Same save behavior as verifyOtp
+
+  logout():
+    POST /auth/logout (best effort, ignores errors)
+    Clears all secure storage
+
+auth_state.dart:
+  Sealed class with 6 states:
+    AuthInitial       -> app just started, haven't checked yet
+    AuthLoading       -> checking auth or sending OTP
+    AuthOtpSent(email) -> OTP was sent, show verify screen
+    AuthAuthenticated(user, isNewUser) -> logged in
+    AuthUnauthenticated -> not logged in
+    AuthError(message) -> something went wrong
+
+auth_provider.dart (AuthNotifier):
+  The central state manager for authentication.
+
+  checkAuthStatus():
+    Called on app startup from splash screen.
+    Reads stored tokens. If present, connects socket and sets authenticated.
+
+  sendOtp(email):
+    Sets loading, calls repo.sendOtp, transitions to OtpSent or Error.
+
+  verifyOtp(email, code):
+    Sets loading, calls repo.verifyOtp.
+    On success: connects socket, sets Authenticated with user data.
+    The router automatically redirects based on profile completeness.
+
+  signInWithGoogle():
+    Uses google_sign_in package to show Google's sign-in UI.
+    Gets idToken from Google, sends to our backend for verification.
+
+  logout():
+    Disconnects socket, calls repo.logout (clears storage).
+    Sets Unauthenticated. Router redirects to /welcome.
+
+  clearError():
+    Transitions from Error back to Unauthenticated.
+
+login_screen.dart:
+  UI: Pink heart logo, "Reverse Match" title, "Where girls choose first" subtitle
+  Email text field with validation
+  "Continue" button -> calls sendOtp
+  "OR" divider
+  "Continue with Google" button -> calls signInWithGoogle
+  Terms of service notice at bottom
+
+  Listens for AuthError state and shows snackbar with error message.
+
+otp_screen.dart:
+  UI: 6 individual digit input fields (OTP boxes)
+
+  Auto-advance: typing a digit automatically moves focus to next box
+  Backspace: on empty box, moves focus to previous box
+  Auto-submit: when all 6 digits entered, automatically verifies
+
+  Resend countdown: 60 seconds timer, then shows "Resend Code" button
+
+  Back button: returns to AuthUnauthenticated state
+
+  The KeyboardListener on each box handles the backspace detection.
+
+
+--- PROFILE SETUP FEATURE ---
+
+profile_repository.dart:
+  getProfile():     GET /profile -> UserModel
+  updateProfile():  PUT /profile with data -> UserModel
+  uploadPhotos():   POST /profile/photos with multipart FormData -> List<PhotoModel>
+  deletePhoto():    DELETE /profile/photos/:publicId
+
+profile_setup_screen.dart:
+  A 6-STEP WIZARD using PageView (horizontal pages).
+
+  User cannot scroll manually (NeverScrollableScrollPhysics).
+  Navigation is controlled by Next/Back buttons.
+
+  Progress bar at top shows which step they're on.
+
+  Step 1 - Basic Info:
+    Name text field
+    Age text field (number keyboard)
+    Gender selection (two animated buttons: Male/Female)
+    _canProceed: name not empty AND age not empty AND gender selected
+
+  Step 2 - Photos:
+    Grid of photo thumbnails with "add photo" button
+    Uses ImagePicker to select from gallery
+    Photos are stored as File objects locally until submission
+    Can remove photos by tapping X
+    _canProceed: at least 2 photos
+
+  Step 3 - Bio:
+    Multi-line text field (5 lines)
+    Character counter (max 300)
+    _canProceed: always true (bio is optional)
+
+  Step 4 - Interests:
+    Wrap of InterestChip widgets for each available interest
+    Tap to toggle selection (animated color change)
+    _canProceed: at least 1 interest selected
+
+  Step 5 - Location:
+    "Detect My Location" button -> uses Geolocator
+      - Checks permission, requests if denied
+      - Gets current position (lat/long)
+      - Shows "Location detected" in the city field
+    City text field (manual override)
+    _canProceed: always true (location is optional)
+
+  Step 6 - Preferences:
+    Age range: RangeSlider (18-60, divided into 42 steps)
+    Max distance: Slider (1-200 km)
+    _canProceed: always true (has defaults)
+
+  On "Complete" (step 6):
+    1. Upload photos via profile repository (multipart form data)
+    2. If upload fails: show error, stay on screen
+    3. Build profile data object with all collected info
+    4. PUT /profile with the data
+    5. If success: save profileComplete + gender to storage, go to /home
+    6. If fail: show error snackbar
+
+
+--- HOME FEATURE (GIRLS) ---
+
+swipe_repository.dart:
+  getFeed(cursor):
+    GET /swipe/feed?cursor=... -> FeedResult(profiles, nextCursor)
+
+  like(userId):
+    POST /swipe/like with { userId }
+
+  skip(userId):
+    POST /swipe/skip with { userId }
+
+  FeedResult: list of UserModel profiles + nextCursor for pagination
+
+girl_home_screen.dart:
+  State management: FeedNotifier (StateNotifier with FeedState)
+
+  FeedState:
+    profiles: List<UserModel>  (cards to show)
+    isLoading: bool
+    error: String?
+    cursor: String? (for loading more)
+
+  FeedNotifier:
+    loadFeed():
+      Calls repo.getFeed with current cursor.
+      Appends new profiles to existing list.
+      Saves the nextCursor for the next load.
+
+    onSwipeRight(index):
+      Calls repo.like(userId) and AWAITS the response.
+      If it fails: returns error message (shown as snackbar).
+      Calls _checkLoadMore.
+
+    onSwipeLeft(index):
+      Calls repo.skip(userId) (fire and forget).
+      Calls _checkLoadMore.
+
+    _checkLoadMore(currentIndex):
+      If less than 3 cards remaining AND cursor exists:
+      automatically load more profiles.
+      This creates an "infinite scroll" effect.
+
+  UI: CardSwiper widget (from flutter_card_swiper package)
+    - Shows 2 stacked cards (current + next peeking behind)
+    - Swipe right = like, swipe left = skip
+    - Each card is a _SwipeCard:
+      - PhotoCarousel (full height)
+      - Gradient overlay at bottom (black to transparent)
+      - Name, age (large white bold text)
+      - Bio (white text, 2 lines max)
+      - Interest tags (white chips, max 4 shown)
+
+  Empty state: "No more profiles" with refresh button
+  Error state: "Failed to load profiles" with retry button
+  Loading state: CircularProgressIndicator
+
+
+--- HOME FEATURE (BOYS) ---
+
+queue_repository.dart:
+  getQueue():
+    GET /queue -> List<LikeModel>
+
+  accept(likeId):
+    POST /queue/accept/:likeId -> MatchModel
+
+  reject(likeId):
+    POST /queue/reject/:likeId
+
+boy_home_screen.dart:
+  State management: QueueNotifier (StateNotifier with QueueState)
+
+  QueueState: likes, isLoading, error
+
+  QueueNotifier:
+    loadQueue():
+      Calls repo.getQueue, stores the likes list.
+
+    accept(likeId, context):
+      Calls repo.accept(likeId).
+      On success: removes like from list, shows MATCH DIALOG.
+      On failure: shows error snackbar.
+
+    reject(likeId):
+      OPTIMISTIC UPDATE: removes from list immediately (before API call).
+      Calls repo.reject in background (fire and forget).
+      This makes rejection feel instant.
+
+    _showMatchDialog(context, match):
+      Shows an AlertDialog with:
+        Heart icon
+        "It's a Match!" text
+        "Send a Message" button -> navigates to /chat/:matchId
+        "Keep Browsing" button -> closes dialog
+
+  UI: Pull-to-refresh ListView
+    Each item is a _QueueCard:
+      - Photo thumbnail (80x80, rounded)
+      - Name, age (bold)
+      - Bio preview (1 line)
+      - Reject button (red X icon)
+      - Accept button (green checkmark icon)
+
+  Empty state: "Waiting for likes - When someone likes your profile,
+                they'll appear here" (hourglass icon)
+
+
+--- MATCH FEATURE ---
+File: features/match/presentation/screens/matches_screen.dart
+
+Uses FutureProvider.autoDispose to fetch matches.
+autoDispose means: when the user leaves the screen and comes back,
+it re-fetches (gets fresh data).
+
+UI layout:
+  1. "New Matches" section (horizontal scrollable row):
+     Shows matches with NO messages yet (newly matched).
+     Circular avatars with names below.
+     Tap -> navigate to chat.
+
+  2. "Messages" section (vertical list):
+     Shows matches WITH messages (active conversations).
+     Each row:
+       - Avatar (56px)
+       - Name (bold)
+       - Last message preview (1 line, truncated)
+         - Bold if unread
+         - Regular if read
+       - Timestamp (formatted with AppDateUtils)
+       - Unread badge (pink circle with count)
+     Tap -> navigate to chat.
+
+  The matches are split using where():
+    newMatches = matches where lastMessage == null
+    conversations = matches where lastMessage != null
+
+
+--- CHAT FEATURE ---
+File: features/chat/presentation/screens/chat_screen.dart
+
+ChatScreen is a StatefulWidget (not using Riverpod for state here
+because chat state is tightly coupled to the socket lifecycle).
+
+initState():
+  1. _loadMessages() - fetch existing messages via REST API
+  2. _setupSocket() - connect to real-time events
+  3. _loadUserId() - get "myId" from secure storage
+
+_loadMessages():
+  GET /messages/:matchId
+  Clears and replaces the local _messages list
+  Scrolls to bottom
+
+_setupSocket():
+  1. Join the match room: socket.joinRoom(matchId)
+  2. Listen for 'new-message':
+     - Add to local list, scroll to bottom
+     - Mark as seen immediately
+  3. Listen for 'user-typing':
+     - Set _isOtherTyping = true
+     - Auto-clear after 3 seconds (typing timeout)
+  4. Listen for 'user-stopped-typing':
+     - Set _isOtherTyping = false
+  5. Listen for 'messages-seen':
+     - (Placeholder for updating blue checkmarks)
+  6. Mark all existing messages as seen
+
+_sendMessage():
+  1. Get trimmed text from controller
+  2. If empty: return
+  3. Send via socket (NOT REST API - goes through socket for real-time)
+  4. Stop typing indicator
+  5. Clear text field
+
+_onTextChanged(value):
+  If text is not empty: emit typing-start
+  If text is empty: emit typing-stop
+
+dispose():
+  1. Cancel typing timer
+  2. Leave socket room
+  3. Remove all socket listeners (important to prevent memory leaks!)
+  4. Dispose controllers
+
+UI layout:
+  AppBar: "Chat" title
+
+  Messages list (Expanded):
+    - Loading: spinner
+    - Empty: "Say hello!" centered text
+    - Has messages: ListView.builder
+      Each message is a _MessageBubble:
+        Alignment: right (mine) or left (theirs)
+        Color: pink (mine) or grey (theirs)
+        Text: message content
+        Timestamp: "3:45 PM" format
+        Read receipts (my messages only):
+          Single checkmark (sent) or double checkmark (seen, blue)
+        Rounded corners: different shape for "mine" vs "theirs"
+        Max width: 75% of screen width
+
+  Typing indicator (if _isOtherTyping):
+    "typing..." in italic grey text, left-aligned
+
+  Input bar:
+    TextField with rounded corners, "Type a message..." placeholder
+    Send button (pink circle with white send icon)
+    Enter key submits the message
+
+
+--- BOOST FEATURE ---
+File: features/boost/presentation/screens/boost_screen.dart
+
+Fetches plans from API (FutureProvider.autoDispose):
+  GET /boost/plans -> List<BoostPlan>
+
+BoostPlan model:
+  tier: 'bronze' | 'silver' | 'gold'
+  price: int (in cents, e.g., 499 = $4.99)
+  duration: int (days)
+  label: String ("Bronze - 1 Day")
+  priceFormatted: getter returns "$4.99" format
+  color: getter returns bronze/silver/gold color
+
+Purchase flow:
+  1. User taps a plan card
+  2. Calls POST /boost/purchase with { tier }
+  3. Backend creates Stripe Checkout Session
+  4. Backend returns { url: "https://checkout.stripe.com/..." }
+  5. Flutter opens the URL in external browser (url_launcher)
+  6. User completes payment on Stripe's hosted page
+  7. Stripe sends webhook to our backend
+  8. Backend activates the boost
+
+UI: Rocket icon, heading, 3 boost cards with colored icons,
+    "Popular" badge on silver plan, prices on the right.
+    Footer: "Free auto-boost activates after 7 days without a match"
+
+
+--- EDIT PROFILE FEATURE ---
+File: features/profile/presentation/screens/edit_profile_screen.dart
+
+Fetches current profile (FutureProvider.autoDispose):
+  GET /profile -> UserModel
+
+The _initialized flag prevents overwriting user edits when the
+provider refreshes. First time: populate controllers. After that: skip.
+
+Editable fields:
+  - Name (text field)
+  - Bio (multi-line, max 300 chars)
+  - Interests (same chip selection as profile setup)
+
+Save:
+  PUT /profile with { name, bio, interests }
+  On success: show snackbar "Profile updated", go back
+  On failure: show error snackbar
+
+Note: Photo management is NOT available in edit mode (only in setup).
+
+
+--- SETTINGS FEATURE ---
+File: features/settings/presentation/screens/settings_screen.dart
+
+Settings tiles:
+  - Edit Profile -> navigate to /edit-profile
+  - Boost -> navigate to /boost
+  - (divider)
+  - Privacy Policy -> (not implemented yet)
+  - Terms of Service -> (not implemented yet)
+  - (divider)
+  - Logout -> confirmation dialog, then calls authProvider.logout()
+  - Delete Account -> _DeleteAccountDialog
+
+Delete Account flow:
+  1. Show dialog with warning text
+  2. User must type "DELETE" in a text field to confirm
+  3. "Delete Forever" button only enabled when text matches
+  4. On confirm: shows loading spinner
+  5. Calls DELETE /api/v1/account with { confirmation: "DELETE_MY_ACCOUNT" }
+  6. On success: show snackbar, call logout (clears local storage)
+  7. On failure: show error snackbar
+
+
+================================================================================
+PART 14: DEVOPS (Docker, CI/CD, PM2)
+================================================================================
+
+--- backend/Dockerfile ---
+Multi-stage build:
+
+  Stage 1 "deps":
+    - Starts from node:22-alpine (small Linux image)
+    - Copies package.json
+    - Runs npm ci --omit=dev (installs only production dependencies)
+
+  Stage 2 "runner":
+    - Starts fresh from node:22-alpine
+    - Creates non-root user "appuser" (security: if app is compromised,
+      attacker has limited permissions)
+    - Copies node_modules from stage 1 (without dev dependencies)
+    - Copies all source code
+    - Removes .env and test files
+    - Runs as appuser (not root)
+    - Exposes port 5000
+    - HEALTHCHECK: wget to /health every 30 seconds
+    - Starts: node server.js
+
+  WHY multi-stage?
+  Stage 1 has npm + build tools (large).
+  Stage 2 only has the runtime (small).
+  Final image is much smaller (~150MB vs ~400MB).
+
+
+--- docker-compose.yml ---
+Defines 3 services that work together:
+
+  api:
+    - Builds from backend/Dockerfile
+    - Port: 5000
+    - Environment variables from host .env
+    - Depends on mongo + redis (waits for them to be healthy)
+    - Restart: unless-stopped
+
+  mongo:
+    - Official MongoDB 7 image
+    - Port: 27017
+    - Volume: persistent data storage (survives container restarts)
+    - Health check: mongosh ping
+
+  redis:
+    - Official Redis 7 Alpine image
+    - Port: 6379
+    - Volume: persistent data
+    - Command: appendonly yes (durability), 256MB max memory, LRU eviction
+    - Health check: redis-cli ping
+
+Usage:
+  docker-compose up -d       # Start all services
+  docker-compose down        # Stop all services
+  docker-compose logs -f api # View API logs
+
+
+--- .github/workflows/ci.yml ---
+GitHub Actions CI pipeline. Runs on push to main/develop and on PRs.
+
+Job 1: backend-lint-and-test
+  - Starts MongoDB and Redis as service containers
+  - Sets up Node.js 22
+  - Installs dependencies (with npm cache)
+  - Runs lint
+  - Runs tests
+
+Job 2: docker-build (depends on job 1 passing)
+  - Builds Docker image
+  - Runs the container briefly to verify it starts
+
+This ensures every code change:
+  1. Passes linting rules
+  2. Passes all tests
+  3. Successfully builds a Docker image
+
+
+--- backend/ecosystem.config.js ---
+PM2 configuration for production deployment WITHOUT Docker.
+
+PM2 is a Node.js process manager that provides:
+  - Cluster mode: runs multiple instances (one per CPU core)
+  - Auto-restart on crash
+  - Log management
+  - Memory limits (restart if exceeds 500MB)
+
+Configuration:
+  instances: 'max' -> use ALL CPU cores
+  exec_mode: 'cluster' -> fork one process per core
+
+  With a 4-core machine: 4 Node.js processes running simultaneously,
+  sharing the same port. The OS load balancer distributes requests.
+
+  This is why we need Redis for Socket.IO - each process is independent
+  and doesn't know about connections on other processes.
+
+
+================================================================================
+PART 15: COMPLETE USER FLOW (Step by Step)
+================================================================================
+
+--- FIRST-TIME GIRL USER ---
+
+1. Girl installs app, opens it
+2. Splash screen (2 seconds, fade animation)
+3. No stored tokens -> redirect to Welcome screen
+4. Swipes through 3 welcome pages
+5. Taps "Get Started" -> Login screen
+6. Enters email, taps "Continue"
+   Backend: generates OTP, sends email (or logs to console in dev)
+7. OTP screen appears, girl enters 6-digit code
+   Backend: verifies OTP, creates new User, returns tokens
+8. isNewUser=true, no gender set -> redirect to Profile Setup
+9. Step 1: enters name "Priya", age 22, selects Female
+10. Step 2: picks 3 photos from gallery
+11. Step 3: writes bio "Love traveling and coffee"
+12. Step 4: selects interests: Travel, Coffee, Music
+13. Step 5: taps "Detect Location", grants permission
+14. Step 6: adjusts age range 20-30, distance 25km
+15. Taps "Complete":
+    - Photos uploaded to Cloudinary
+    - Profile updated in MongoDB
+    - isProfileComplete set to true
+    - Redirected to /home
+16. Girl Home Screen = SWIPE UI
+    Backend feed algorithm runs:
+    - Finds male users within 25km, age 20-30
+    - Excludes already-interacted and blocked users
+    - Sorts by boost score (gold > silver > bronze > none)
+    - Returns top 20 profiles
+17. Girl sees a card: "Rahul, 25" with photos
+18. Swipes RIGHT (like):
+    - POST /swipe/like { userId: "rahul_id" }
+    - Like document created (status: pending)
+    - Socket event: 'new-like' sent to Rahul
+    - Push notification: "Someone liked your profile" sent to Rahul's phone
+19. Girl continues swiping. When 3 cards remaining, auto-loads next 20.
+20. Girl swipes LEFT on some profiles (skip, recorded to avoid reshowing)
+
+
+--- FIRST-TIME BOY USER ---
+
+1-15. Same onboarding flow as girl, but selects Male in step 9.
+16. Boy Home Screen = QUEUE UI
+    Shows "Waiting for likes" (empty state, hourglass icon)
+17. Girl likes his profile (as above)
+18. Boy receives push notification "Someone liked your profile"
+19. Boy opens app, Queue screen now shows Priya's profile card:
+    - Photo, name "Priya, 22", bio preview
+    - Red X (reject) and Green checkmark (accept)
+20. Boy taps GREEN CHECKMARK (accept):
+    - POST /queue/accept/:likeId
+    - Like status -> accepted
+    - Match created in MongoDB
+    - Boy's daysWithoutMatch reset to 0
+    - Socket events: 'new-match' sent to BOTH users
+    - Push notification to girl: "It's a Match!"
+    - MATCH DIALOG appears:
+      Heart icon, "It's a Match!"
+      "Send a Message" button, "Keep Browsing" button
+21. Boy taps "Send a Message" -> navigates to Chat screen
+
+
+--- CHATTING ---
+
+22. Chat screen loads:
+    - GET /messages/:matchId (empty initially)
+    - Socket: joins match room
+    - "Say hello!" empty state
+23. Boy types "Hey! Nice to meet you"
+    - Typing indicator shown to girl (if she's on this chat screen)
+    - Boy taps send: socket emits 'send-message'
+    - Message saved to MongoDB
+    - Socket broadcasts 'new-message' to the room
+    - Girl receives message in real-time
+    - Push notification to girl (if not on chat screen)
+24. Girl reads the message:
+    - Socket emits 'mark-seen'
+    - Messages updated: seen = true
+    - Boy sees blue double checkmark on his message
+
+
+--- BOY WITH NO MATCHES (BOOST SYSTEM) ---
+
+25. Boy has been on the app for 7 days with no matches
+26. Daily cron job has incremented daysWithoutMatch to 7
+27. Feed algorithm now gives him BRONZE boost (score 200)
+28. His profile appears HIGHER in girls' feeds
+29. After 15 days: SILVER boost (score 500) - even higher
+30. After 25 days: GOLD boost (score 1000) - top of feed
+31. Boy gets a match! -> daysWithoutMatch resets to 0
+
+
+--- BOY BUYS A PAID BOOST ---
+
+32. Boy goes to Settings -> Boost
+33. Sees 3 plans: Bronze $4.99, Silver $9.99, Gold $19.99
+34. Taps Silver:
+    - POST /boost/purchase { tier: "silver" }
+    - Backend creates Stripe checkout session
+    - Returns checkout URL
+    - Flutter opens URL in browser
+35. Boy pays on Stripe's page
+36. Stripe sends webhook to POST /api/v1/boost/webhook
+37. Backend activates boost: boostLevel=silver, boostExpiry=now+3days
+38. For 3 days, boy's profile has score 500 in feed (overrides auto-boost)
+39. After 3 days, hourly cron clears the expired boost
+
+
+--- BLOCKING A USER ---
+
+40. Girl matches with someone who sends inappropriate messages
+41. Girl goes to settings or chat -> block user
+    - POST /block { userId: "bad_user_id" }
+    - Block document created
+    - Match deleted
+    - All likes between them deleted
+42. Bad user disappears from girl's matches
+43. Bad user's messages are in orphaned match (match deleted)
+44. Girl never sees bad user in feed again (excluded by block)
+45. Bad user never sees girl's profile again (excluded by block)
+
+
+--- DELETING ACCOUNT ---
+
+46. User goes to Settings -> Delete Account
+47. Warning dialog appears
+48. User types "DELETE" to confirm
+49. Taps "Delete Forever"
+    - DELETE /api/v1/account { confirmation: "DELETE_MY_ACCOUNT" }
+    - Backend deletes:
+      * All photos from Cloudinary
+      * All messages in all matches
+      * All matches
+      * All likes (sent and received)
+      * All blocks
+      * All reports filed
+      * Redis cache entries
+      * User document
+    - Socket disconnected
+50. User is logged out, all local storage cleared
+51. User is back at welcome screen
+
+
+================================================================================
+PART 16: API ENDPOINTS REFERENCE
+================================================================================
+
+METHOD  PATH                         AUTH  GENDER   DESCRIPTION
+------  ----                         ----  ------   -----------
+POST    /api/v1/auth/signup          No    -        Send OTP to email
+POST    /api/v1/auth/verify-otp      No    -        Verify OTP, get tokens
+POST    /api/v1/auth/google          No    -        Google sign-in
+POST    /api/v1/auth/refresh-token   No    -        Refresh access token
+POST    /api/v1/auth/logout          Yes   -        Invalidate refresh token
+
+GET     /api/v1/profile              Yes   -        Get my profile
+PUT     /api/v1/profile              Yes   -        Update my profile
+POST    /api/v1/profile/photos       Yes   -        Upload photos (multipart)
+DELETE  /api/v1/profile/photos/:id   Yes   -        Delete a photo
+
+GET     /api/v1/swipe/feed           Yes   Female   Get profiles to swipe
+POST    /api/v1/swipe/like           Yes   Female   Like a boy
+POST    /api/v1/swipe/skip           Yes   Female   Skip a boy
+
+GET     /api/v1/queue                Yes   Male     Get pending likes
+POST    /api/v1/queue/accept/:id     Yes   Male     Accept a like (create match)
+POST    /api/v1/queue/reject/:id     Yes   Male     Reject a like
+
+GET     /api/v1/matches              Yes   -        Get my matches
+GET     /api/v1/messages/:matchId    Yes   -        Get messages in a match
+POST    /api/v1/messages             Yes   -        Send a message
+
+GET     /api/v1/boost/plans          Yes   Male     Get boost plans + prices
+POST    /api/v1/boost/purchase       Yes   Male     Create Stripe checkout
+POST    /api/v1/boost/webhook        No*   -        Stripe webhook (*verified by signature)
+
+POST    /api/v1/report               Yes   -        Report a user
+POST    /api/v1/block                Yes   -        Block a user
+
+DELETE  /api/v1/account              Yes   -        Delete my account
+
+GET     /health                      No    -        Health check (MongoDB + Redis)
+GET     /ready                       No    -        Readiness probe (MongoDB only)
+
+
+================================================================================
+PART 17: ENVIRONMENT VARIABLES REFERENCE
+================================================================================
+
+VARIABLE                    REQUIRED  DEFAULT                  DESCRIPTION
+--------                    --------  -------                  -----------
+PORT                        No        5000                     Server port
+NODE_ENV                    No        development              Environment mode
+MONGO_URI                   YES       -                        MongoDB connection string
+REDIS_URL                   No        redis://localhost:6379   Redis connection string
+JWT_ACCESS_SECRET           YES       -                        Secret for access tokens (min 32 chars)
+JWT_REFRESH_SECRET          YES       -                        Secret for refresh tokens (min 32 chars)
+JWT_ACCESS_EXPIRY           No        15m                      Access token lifetime
+JWT_REFRESH_EXPIRY          No        7d                       Refresh token lifetime
+GOOGLE_CLIENT_ID            No        -                        Google OAuth client ID
+SMTP_HOST                   No        smtp.gmail.com           Email server host
+SMTP_PORT                   No        587                      Email server port
+SMTP_USER                   No        -                        Email account username
+SMTP_PASS                   No        -                        Email account password/app password
+OTP_EXPIRY_MINUTES          No        5                        OTP validity in minutes
+CLOUDINARY_CLOUD_NAME       No        -                        Cloudinary cloud name
+CLOUDINARY_API_KEY          No        -                        Cloudinary API key
+CLOUDINARY_API_SECRET       No        -                        Cloudinary API secret
+FIREBASE_SERVICE_ACCOUNT_PATH No      -                        Path to Firebase JSON key file
+STRIPE_SECRET_KEY           No        -                        Stripe secret API key
+STRIPE_WEBHOOK_SECRET       No        -                        Stripe webhook signing secret
+CORS_ORIGINS                No        http://localhost:3000    Comma-separated allowed origins
+SENTRY_DSN                  No        -                        Sentry error tracking DSN
+LIKE_RATE_LIMIT_WINDOW_MS   No        3600000 (1 hour)         Like rate limit window
+LIKE_RATE_LIMIT_MAX         No        100                      Max likes per window
+MAX_REQUEST_BODY_SIZE       No        10mb                     Max request body size
+SOCKET_MAX_PAYLOAD_BYTES    No        65536 (64KB)             Max socket message size
+
+
+================================================================================
+PART 18: HOW THE BOOST SYSTEM WORKS
+================================================================================
+
+The boost system is the app's core differentiator. It ensures every boy
+eventually gets visibility, even if girls initially skip him.
+
+TWO TYPES OF BOOST:
+
+1. AUTO-BOOST (free, automatic):
+   Based on daysWithoutMatch counter.
+
+   Day 0-6:   No boost     (boostScore = 0)
+   Day 7-14:  Bronze boost  (boostScore = 200)
+   Day 15-24: Silver boost  (boostScore = 500)
+   Day 25+:   Gold boost    (boostScore = 1000)
+
+   The daily cron job increments daysWithoutMatch at midnight UTC
+   for ALL active male users with complete profiles.
+
+   When a match occurs (boy accepts a like), daysWithoutMatch
+   resets to 0. The boy starts over at "no boost".
+
+2. PAID BOOST (purchased via Stripe):
+   Bronze: $4.99, 1 day, boostScore = 200
+   Silver: $9.99, 3 days, boostScore = 500
+   Gold:   $19.99, 7 days, boostScore = 1000
+
+   Stored as boostLevel + boostExpiry on the User document.
+   Hourly cron job clears expired boosts.
+
+PRIORITY:
+   Paid boost takes priority over auto-boost while active.
+   If paid boost expires, auto-boost kicks back in.
+
+   Example: Boy has daysWithoutMatch=20 (auto silver).
+   He buys gold boost. For 7 days he has gold.
+   After 7 days, paid boost expires, auto silver resumes.
+
+HOW IT AFFECTS THE FEED:
+   The feed aggregation pipeline calculates an "effectiveBoost" for each boy:
+
+   If (boostLevel != 'none' AND boostExpiry > now):
+     effectiveBoost = boostLevel (paid)
+   Else:
+     effectiveBoost = auto-boost based on daysWithoutMatch
+
+   Then converts to numeric boostScore:
+     gold=1000, silver=500, bronze=200, none=0
+
+   Feed is sorted by: boostScore DESC, daysWithoutMatch DESC, _id DESC
+
+   This means gold boys appear FIRST, then silver, then bronze, then normal.
+   Within the same boost tier, boys with more days without match appear first.
+
+   Effectively, the system creates a queue where the "most in need" boys
+   get the most visibility.
+
+
+================================================================================
+PART 19: HOW THE MATCHING ALGORITHM WORKS
+================================================================================
+
+The feed algorithm (swipe.service.js getFeed) is the most complex piece
+of the backend. Here's the full pipeline explained:
+
+STEP 1: CACHE CHECK
+  If this is the first page (no cursor), check Redis cache.
+  Cache key: "feed:{userId}:{limit}"
+  TTL: 2 minutes
+  If cached: return immediately (skip entire pipeline)
+
+STEP 2: LOAD GIRL'S PREFERENCES
+  Find the authenticated girl user.
+  Extract: ageMin, ageMax, maxDistance, location coordinates.
+
+STEP 3: BUILD EXCLUSION LIST
+  Run two queries in parallel:
+  a) Like.find({ fromUser: girlId }).distinct('toUser')
+     -> All boys she's already interacted with (liked, skipped)
+  b) Block.find({ blocker: girlId OR blocked: girlId })
+     -> All users she's blocked or who blocked her
+
+  Combine into a Set of unique IDs to exclude.
+  Also add the girl's own ID (can't show yourself).
+  Convert to ObjectId array for MongoDB query.
+
+STEP 4: GEO FILTER (if girl has location)
+  Uses MongoDB's $geoNear aggregation stage:
+  - near: girl's coordinates
+  - maxDistance: girl's maxDistance preference * 1000 (km to meters)
+  - spherical: true (Earth is round!)
+  - query filter: excludeIds, gender=male, isActive, isProfileComplete,
+                  age between ageMin and ageMax
+  - Adds a "distance" field to each result (meters from the girl)
+
+  If girl has NO location (coordinates are [0,0]):
+  Uses regular $match with the same filters but no geo constraint.
+
+STEP 5: CALCULATE EFFECTIVE BOOST
+  For each remaining boy, determine their boost tier:
+
+  $addFields: effectiveBoost =
+    IF boostLevel != 'none' AND boostExpiry > now:
+      boostLevel (paid boost is active)
+    ELSE:
+      IF daysWithoutMatch >= 25: 'gold'
+      IF daysWithoutMatch >= 15: 'silver'
+      IF daysWithoutMatch >= 7:  'bronze'
+      ELSE: 'none'
+
+STEP 6: CALCULATE BOOST SCORE (numeric)
+  $addFields: boostScore =
+    gold=1000, silver=500, bronze=200, none=0
+
+STEP 7: CURSOR PAGINATION
+  If a cursor (last seen _id) was provided:
+  $match: _id < cursor
+  This gets the "next page" after the cursor.
+
+STEP 8: SORT
+  $sort: { boostScore: -1, daysWithoutMatch: -1, _id: -1 }
+  Primary: highest boost first
+  Secondary: most days without match first
+  Tertiary: newest profile first
+
+STEP 9: LIMIT
+  $limit: 20 (or whatever limit was requested)
+
+STEP 10: PROJECT (select fields)
+  Only return: name, age, bio, interests, photos, location(city/state),
+               effectiveBoost, distance
+
+STEP 11: CACHE AND RETURN
+  If first page: cache the result for 2 minutes.
+  Return: { profiles: [...], nextCursor: last_id or null }
+
+  nextCursor is null when there are fewer results than the limit
+  (meaning no more pages).
+
+
+================================================================================
+PART 20: SECURITY MEASURES EXPLAINED
+================================================================================
+
+1. JWT WITH REFRESH TOKEN ROTATION
+   Access tokens expire in 15 minutes (short-lived, limits exposure).
+   Refresh tokens are rotated: each use generates a new pair.
+   Old refresh tokens become invalid.
+   Refresh tokens are hashed (SHA-256) before storage.
+   Token reuse detection: if the same refresh token is used twice,
+   ALL tokens for that user are invalidated.
+
+2. NOSQL INJECTION PREVENTION
+   All request bodies/queries are sanitized by removing $ operator keys.
+   Prevents attacks like { "email": { "$gt": "" } } which would match all.
+
+3. RATE LIMITING (5 layers)
+   - Global: 1000 req/15min per IP
+   - Auth: 10 req/15min per IP
+   - OTP send: 3 req/15min per email
+   - OTP verify: 5 req/15min per email
+   - Like: 100 req/hour per user
+   - Message: 200 req/hour per user
+
+4. IMAGE VALIDATION (2 layers)
+   - MIME type check (Multer file filter)
+   - Magic bytes check (actual file content analysis)
+   Prevents uploading malicious files disguised as images.
+
+5. INPUT VALIDATION (Joi schemas)
+   Every request body is validated against a strict schema.
+   Unknown fields are stripped. Invalid data returns 400.
+
+6. CORS LOCKDOWN
+   Production: only specified origins can make requests.
+   Development: all origins allowed for convenience.
+
+7. SECURITY HEADERS (Helmet)
+   X-Content-Type-Options, X-Frame-Options, HSTS,
+   Content-Security-Policy, and 10+ other headers.
+
+8. FILE SIZE LIMITS
+   Request body: 10MB max
+   Individual photo: 5MB max
+   Socket payload: 64KB max
+
+9. AUTHORIZATION CHECKS
+   - Gender-based route access (girls can't see queue, boys can't swipe)
+   - Ownership checks (can't accept someone else's like)
+   - Match participation checks (can't read messages in someone else's match)
+
+10. SENSITIVE DATA HANDLING
+    - Passwords: not used (OTP or Google auth)
+    - Refresh tokens: SHA-256 hashed in DB
+    - Logs: authorization headers and tokens redacted
+    - Sentry: auth headers and cookies scrubbed
+    - Error responses: no stack traces in production
+
+11. ACCOUNT DELETION
+    Fully GDPR-compliant deletion: removes ALL user data including
+    photos, messages, matches, likes, blocks, and the user document.
+
+12. BLOCK SYSTEM
+    Blocks remove all connections (matches, likes) and prevent
+    future visibility in both directions.
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================
+
+Total files in the project: ~120 source files
+Backend: 45 source files (Node.js)
+Flutter: 35 source files (Dart)
+DevOps: 4 files (Docker, CI, PM2)
+Config: ~10 files
+
+This document covers every single file, function, and logic flow
+in the entire Reverse Match codebase.
