@@ -2,19 +2,45 @@
 .DS_Store
 Thumbs.db
 desktop.ini
+$RECYCLE.BIN/
+ehthumbs.db
 
-# IDE
+# IDE and local assistant folders
 .idea/
 .vscode/
+.claude/
+.gemini/
 *.swp
 *.swo
 
 # Environment files (never commit secrets)
+.env
+.env.*
+!.env.example
+!.env.sample
 .env.local
 *.env.local
-# Backend .env has secrets — never commit
 backend/.env
+reverse_match/.env
+reverse_match/.env.*
 
 # Logs
 *.log
 logs/
+
+# Local caches and temp files
+.cache/
+tmp/
+temp/
+
+# Flutter / Dart generated files
+reverse_match/.dart_tool/
+reverse_match/.flutter-plugins
+reverse_match/.flutter-plugins-dependencies
+reverse_match/.pub/
+reverse_match/.pub-cache/
+reverse_match/build/
+reverse_match/coverage/
+
+# Local SDK / tool checkouts
+flutter/
