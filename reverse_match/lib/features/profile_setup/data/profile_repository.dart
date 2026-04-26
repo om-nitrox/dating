@@ -89,4 +89,18 @@ class ProfileRepository {
       ));
     }
   }
+
+  Future<ApiResult<bool>> uploadSelfie(File file) async {
+    try {
+      final formData = FormData.fromMap({
+        'selfie': await MultipartFile.fromFile(file.path),
+      });
+      await _dio.post(ApiEndpoints.uploadSelfie, data: formData);
+      return const Success(true);
+    } on DioException catch (e) {
+      return Failure(ServerException(
+        e.response?.data?['error']?['message'] ?? 'Failed to upload selfie',
+      ));
+    }
+  }
 }

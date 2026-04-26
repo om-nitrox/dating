@@ -17,6 +17,9 @@ initSentry();
 
 const app = express();
 
+// Trust proxy (Nginx)
+app.set('trust proxy', 1);
+
 // Stripe webhook needs raw body - mount before json parser
 app.post(
   '/api/v1/boost/webhook',
@@ -30,9 +33,7 @@ app.use(helmet());
 // CORS — locked to specific origins
 app.use(
   cors({
-    origin: config.nodeEnv === 'development'
-      ? true // Allow all in dev
-      : config.corsOrigins,
+    origin: true, // Allow all origins (mobile app + web)
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

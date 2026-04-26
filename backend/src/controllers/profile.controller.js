@@ -29,4 +29,16 @@ const reorderPhotos = catchAsync(async (req, res) => {
   res.status(200).json({ photos });
 });
 
-module.exports = { getProfile, updateProfile, uploadPhotos, deletePhoto, reorderPhotos };
+const uploadSelfie = catchAsync(async (req, res) => {
+  const result = await profileService.uploadSelfie(req.user.id, req.file);
+  res.status(200).json(result);
+});
+
+module.exports = {
+  getProfile,
+  updateProfile,
+  uploadPhotos,
+  deletePhoto,
+  reorderPhotos,
+  uploadSelfie,
+};

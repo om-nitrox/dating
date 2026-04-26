@@ -12,5 +12,6 @@ router.put('/', validate(updateProfileSchema), profileController.updateProfile);
 router.post('/photos', mutationLimiter, upload.array('photos', 6), profileController.uploadPhotos);
 router.put('/photos/reorder', mutationLimiter, validate(reorderPhotosSchema), profileController.reorderPhotos);
 router.delete('/photos/:publicId', mutationLimiter, profileController.deletePhoto);
+router.post('/selfie', mutationLimiter, upload.single('selfie'), profileController.uploadSelfie);
 
 module.exports = router;

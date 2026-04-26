@@ -24,6 +24,10 @@ backend/.env
 reverse_match/.env
 reverse_match/.env.*
 
+# Secrets / keys
+*.pem
+*.key
+
 # Logs
 *.log
 logs/

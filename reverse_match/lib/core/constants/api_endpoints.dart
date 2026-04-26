@@ -15,6 +15,7 @@ class ApiEndpoints {
   static const String profile = '/profile';
   static const String uploadPhotos = '/profile/photos';
   static String deletePhoto(String publicId) => '/profile/photos/$publicId';
+  static const String uploadSelfie = '/profile/selfie';
 
   // Swipe (girls)
   static const String feed = '/swipe/feed';

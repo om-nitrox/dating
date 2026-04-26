@@ -167,14 +167,34 @@ const getFeed = async (userId, cursor, limit = 20) => {
   pipeline.push({ $sort: { boostScore: -1, daysWithoutMatch: -1, _id: -1 } });
   pipeline.push({ $limit: limit });
 
-  // Project only needed fields
+  // Project only needed fields.
+  // Private fields (refreshToken, selfiePhoto, email, fcmToken, dob) are never
+  // projected to viewers — only the card-relevant subset is returned.
   pipeline.push({
     $project: {
       name: 1,
       age: 1,
+      gender: 1,
+      pronouns: 1,
       bio: 1,
       interests: 1,
       photos: 1,
+      prompts: 1,
+      height: 1,
+      ethnicity: 1,
+      hometown: 1,
+      jobTitle: 1,
+      workplace: 1,
+      education: 1,
+      religion: 1,
+      politics: 1,
+      languages: 1,
+      datingIntentions: 1,
+      relationshipType: 1,
+      children: 1,
+      familyPlans: 1,
+      vices: 1,
+      isVerified: 1,
       location: { city: 1, state: 1 },
       effectiveBoost: 1,
       distance: 1,

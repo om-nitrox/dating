@@ -26,6 +26,8 @@ class SwipeRepository {
       return Failure(ServerException(
         e.response?.data?['error']?['message'] ?? 'Failed to load feed',
       ));
+    } catch (e) {
+      return Failure(ServerException('Failed to parse feed: $e'));
     }
   }
 

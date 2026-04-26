@@ -10,7 +10,36 @@ import '../../features/chat/presentation/screens/chat_screen.dart';
 import '../../features/home/presentation/screens/boy_home_screen.dart';
 import '../../features/home/presentation/screens/girl_home_screen.dart';
 import '../../features/match/presentation/screens/matches_screen.dart';
+import '../../features/onboarding/presentation/screens/children_screen.dart';
+import '../../features/onboarding/presentation/screens/dating_preference_screen.dart';
+import '../../features/onboarding/presentation/screens/dob_screen.dart';
+import '../../features/onboarding/presentation/screens/drinking_screen.dart';
+import '../../features/onboarding/presentation/screens/drugs_screen.dart';
+import '../../features/onboarding/presentation/screens/education_screen.dart';
+import '../../features/onboarding/presentation/screens/ethnicity_screen.dart';
+import '../../features/onboarding/presentation/screens/family_plans_screen.dart';
+import '../../features/onboarding/presentation/screens/gender_screen.dart';
+import '../../features/onboarding/presentation/screens/height_screen.dart';
+import '../../features/onboarding/presentation/screens/hometown_screen.dart';
+import '../../features/onboarding/presentation/screens/intentions_screen.dart';
+import '../../features/onboarding/presentation/screens/job_screen.dart';
+import '../../features/onboarding/presentation/screens/languages_screen.dart';
+import '../../features/onboarding/presentation/screens/location_screen.dart';
+import '../../features/onboarding/presentation/screens/marijuana_screen.dart';
+import '../../features/onboarding/presentation/screens/name_screen.dart';
+import '../../features/onboarding/presentation/screens/orientation_screen.dart';
+import '../../features/onboarding/presentation/screens/photos_screen.dart';
+import '../../features/onboarding/presentation/screens/politics_screen.dart';
+import '../../features/onboarding/presentation/screens/preview_screen.dart';
+import '../../features/onboarding/presentation/screens/prompts_screen.dart';
+import '../../features/onboarding/presentation/screens/pronouns_screen.dart';
+import '../../features/onboarding/presentation/screens/relationship_type_screen.dart';
+import '../../features/onboarding/presentation/screens/religion_screen.dart';
+import '../../features/onboarding/presentation/screens/selfie_screen.dart';
+import '../../features/onboarding/presentation/screens/smoking_screen.dart';
+import '../../features/onboarding/presentation/screens/tutorial_screen.dart';
 import '../../features/onboarding/presentation/screens/welcome_screen.dart';
+import '../../features/onboarding/presentation/screens/workplace_screen.dart';
 import '../../features/profile/presentation/screens/edit_profile_screen.dart';
 import '../../features/profile_setup/presentation/screens/profile_setup_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
@@ -30,6 +59,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           path == '/welcome' ||
           path == '/login' ||
           path.startsWith('/otp');
+      final isOnboarding = path.startsWith('/onboarding');
 
       // Stay on splash while auth is loading
       if (authState is AuthInitial || authState is AuthLoading) {
@@ -51,11 +81,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (authState is AuthAuthenticated) {
         final user = authState.user;
 
-        // Redirect to profile setup if incomplete
+        // Redirect to onboarding if incomplete; allow any /onboarding/* route
         if (!user.isProfileComplete &&
             user.gender == null &&
-            path != '/profile-setup') {
-          return '/profile-setup';
+            path != '/profile-setup' &&
+            !isOnboarding) {
+          return '/onboarding/name';
         }
 
         // Redirect away from auth pages
@@ -91,6 +122,123 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile-setup',
         builder: (_, __) => const ProfileSetupScreen(),
+      ),
+      // Hinge-style onboarding flow
+      GoRoute(
+        path: '/onboarding/name',
+        builder: (_, __) => const NameScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/dob',
+        builder: (_, __) => const DobScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/gender',
+        builder: (_, __) => const GenderScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/pronouns',
+        builder: (_, __) => const PronounsScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/orientation',
+        builder: (_, __) => const OrientationScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/dating-pref',
+        builder: (_, __) => const DatingPreferenceScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/location',
+        builder: (_, __) => const LocationScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/height',
+        builder: (_, __) => const HeightScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/ethnicity',
+        builder: (_, __) => const EthnicityScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/children',
+        builder: (_, __) => const ChildrenScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/family-plans',
+        builder: (_, __) => const FamilyPlansScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/hometown',
+        builder: (_, __) => const HometownScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/job',
+        builder: (_, __) => const JobScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/workplace',
+        builder: (_, __) => const WorkplaceScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/education',
+        builder: (_, __) => const EducationScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/religion',
+        builder: (_, __) => const ReligionScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/politics',
+        builder: (_, __) => const PoliticsScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/languages',
+        builder: (_, __) => const LanguagesScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/intentions',
+        builder: (_, __) => const IntentionsScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/relationship',
+        builder: (_, __) => const RelationshipTypeScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/drinking',
+        builder: (_, __) => const DrinkingScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/smoking',
+        builder: (_, __) => const SmokingScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/marijuana',
+        builder: (_, __) => const MarijuanaScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/drugs',
+        builder: (_, __) => const DrugsScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/photos',
+        builder: (_, __) => const PhotosScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/prompts',
+        builder: (_, __) => const PromptsScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/selfie',
+        builder: (_, __) => const SelfieScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/preview',
+        builder: (_, __) => const PreviewScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/tutorial',
+        builder: (_, __) => const TutorialScreen(),
       ),
       // Main app shell
       StatefulShellRoute.indexedStack(
