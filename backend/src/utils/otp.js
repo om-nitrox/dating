@@ -24,8 +24,8 @@ const getTransporter = () => {
 };
 
 const sendOtpEmail = async (email, code) => {
-  if (config.nodeEnv === 'development' && !config.smtpUser) {
-    logger.info(`[DEV] OTP for ${email}: ${code}`);
+  if (!config.smtpUser || !config.smtpPass) {
+    logger.info(`[${config.nodeEnv}] OTP for ${email}: ${code}`);
     return;
   }
 
