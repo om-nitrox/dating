@@ -6,7 +6,7 @@ const getQueue = catchAsync(async (req, res) => {
   const result = await queueService.getQueue(
     req.user.id,
     parseInt(page) || 1,
-    parseInt(limit) || 20
+    parseInt(limit) || 20,
   );
   res.status(200).json(result);
 });

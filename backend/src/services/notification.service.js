@@ -45,9 +45,9 @@ const sendPush = async (userId, title, body, data = {}, retries = 0) => {
     const staleTokens = [];
     response.responses.forEach((resp, idx) => {
       if (
-        !resp.success &&
-        (resp.error?.code === 'messaging/invalid-registration-token' ||
-          resp.error?.code === 'messaging/registration-token-not-registered')
+        !resp.success
+        && (resp.error?.code === 'messaging/invalid-registration-token'
+          || resp.error?.code === 'messaging/registration-token-not-registered')
       ) {
         staleTokens.push(tokens[idx]);
       }

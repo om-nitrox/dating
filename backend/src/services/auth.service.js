@@ -3,7 +3,9 @@ const User = require('../models/User');
 const Otp = require('../models/Otp');
 const config = require('../config');
 const { generateOtp, sendOtpEmail } = require('../utils/otp');
-const { signAccessToken, signRefreshToken, verifyRefreshToken, hashRefreshToken } = require('../utils/token');
+const {
+  signAccessToken, signRefreshToken, verifyRefreshToken, hashRefreshToken,
+} = require('../utils/token');
 const { getRedis } = require('../config/redis');
 const AppError = require('../utils/AppError');
 
@@ -124,7 +126,7 @@ const refreshTokens = async (token) => {
   const user = await User.findOneAndUpdate(
     { _id: decoded.id, refreshToken: hashedIncoming },
     { refreshToken: newHash },
-    { new: true }
+    { new: true },
   );
 
   if (!user) {

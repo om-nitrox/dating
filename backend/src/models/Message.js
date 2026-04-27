@@ -27,7 +27,7 @@ const messageSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Newest-first for cursor pagination; also used by markSeen queries

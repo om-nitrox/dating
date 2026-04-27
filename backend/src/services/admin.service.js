@@ -2,9 +2,6 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Report = require('../models/Report');
 const Match = require('../models/Match');
-const Message = require('../models/Message');
-const Like = require('../models/Like');
-const Block = require('../models/Block');
 const { getRedis } = require('../config/redis');
 const { sendPush } = require('./notification.service');
 const AppError = require('../utils/AppError');
@@ -104,4 +101,6 @@ const getAdminUserProfile = async (userId) => {
   };
 };
 
-module.exports = { listReports, resolveReport, banUserById, getAdminUserProfile };
+module.exports = {
+  listReports, resolveReport, banUserById, getAdminUserProfile,
+};

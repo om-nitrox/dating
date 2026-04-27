@@ -3,8 +3,23 @@
   "env": { "node": true, "es2022": true, "jest": true },
   "parserOptions": { "ecmaVersion": 2022 },
   "rules": {
-    "no-underscore-dangle": ["error", { "allow": ["_id"] }],
+    "no-underscore-dangle": ["error", { "allow": ["_id", "__v"] }],
     "no-console": "warn",
-    "import/no-extraneous-dependencies": ["error", { "devDependencies": ["**/__tests__/**"] }]
+    "import/no-extraneous-dependencies": ["error", { "devDependencies": ["**/__tests__/**"] }],
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "no-restricted-syntax": "off",
+    "no-await-in-loop": "off",
+    "consistent-return": "off",
+    "no-param-reassign": ["error", { "props": false }],
+    "no-use-before-define": "off",
+    "no-continue": "off",
+    "no-plusplus": "off",
+    "default-param-last": "off",
+    "radix": "off",
+    "global-require": "off",
+    "import/no-dynamic-require": "off",
+    "no-promise-executor-return": "off",
+    "no-empty": ["error", { "allowEmptyCatch": true }],
+    "max-len": ["error", { "code": 120, "ignoreUrls": true, "ignoreStrings": true, "ignoreTemplateLiterals": true }]
   }
 }

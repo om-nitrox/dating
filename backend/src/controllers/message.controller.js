@@ -7,7 +7,7 @@ const getMessages = catchAsync(async (req, res) => {
     req.params.matchId,
     req.user.id,
     cursor || null,
-    parseInt(limit, 10) || 30
+    parseInt(limit, 10) || 30,
   );
   res.status(200).json(result);
 });
@@ -16,7 +16,7 @@ const sendMessage = catchAsync(async (req, res) => {
   const message = await messageService.sendMessage(
     req.body.matchId,
     req.user.id,
-    req.body.text
+    req.body.text,
   );
 
   const io = req.app.get('io');

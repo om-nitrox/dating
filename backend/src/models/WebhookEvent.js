@@ -18,7 +18,7 @@ const webhookEventSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Auto-expire after 30 days to prevent unbounded growth

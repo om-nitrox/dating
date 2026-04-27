@@ -27,7 +27,11 @@ const getMatches = async (userId, cursor, limit = 20) => {
           { $match: { $expr: { $eq: ['$matchId', '$$matchId'] } } },
           { $sort: { createdAt: -1 } },
           { $limit: 1 },
-          { $project: { text: 1, sender: 1, seen: 1, createdAt: 1 } },
+          {
+            $project: {
+              text: 1, sender: 1, seen: 1, createdAt: 1,
+            },
+          },
         ],
         as: 'lastMessageArr',
       },
@@ -61,7 +65,11 @@ const getMatches = async (userId, cursor, limit = 20) => {
         localField: 'users',
         foreignField: '_id',
         pipeline: [
-          { $project: { name: 1, age: 1, photos: 1, bio: 1 } },
+          {
+            $project: {
+              name: 1, age: 1, photos: 1, bio: 1,
+            },
+          },
         ],
         as: 'users',
       },

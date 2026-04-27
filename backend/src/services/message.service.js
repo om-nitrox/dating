@@ -52,7 +52,7 @@ const sendMessage = async (matchId, senderId, text) => {
   });
 
   const recipientId = match.users.find(
-    (u) => u.toString() !== senderId.toString()
+    (u) => u.toString() !== senderId.toString(),
   );
 
   sendPush(recipientId, 'New Message', text.substring(0, 100), {
@@ -70,7 +70,7 @@ const markSeen = async (matchId, userId) => {
       sender: { $ne: userId },
       seen: false,
     },
-    { seen: true, seenAt: new Date() }
+    { seen: true, seenAt: new Date() },
   );
 };
 

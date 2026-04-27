@@ -36,7 +36,7 @@ const reportSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Admin queries — find all reports against a user, filtered by status

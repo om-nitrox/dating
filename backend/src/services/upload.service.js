@@ -18,26 +18,23 @@ const validateImageContent = (buffer) => {
 
   const bytes = [...buffer.subarray(0, 12)];
 
-  const isJpeg =
-    bytes[0] === MAGIC_BYTES.jpeg[0] &&
-    bytes[1] === MAGIC_BYTES.jpeg[1] &&
-    bytes[2] === MAGIC_BYTES.jpeg[2];
+  const isJpeg = bytes[0] === MAGIC_BYTES.jpeg[0]
+    && bytes[1] === MAGIC_BYTES.jpeg[1]
+    && bytes[2] === MAGIC_BYTES.jpeg[2];
 
-  const isPng =
-    bytes[0] === MAGIC_BYTES.png[0] &&
-    bytes[1] === MAGIC_BYTES.png[1] &&
-    bytes[2] === MAGIC_BYTES.png[2] &&
-    bytes[3] === MAGIC_BYTES.png[3];
+  const isPng = bytes[0] === MAGIC_BYTES.png[0]
+    && bytes[1] === MAGIC_BYTES.png[1]
+    && bytes[2] === MAGIC_BYTES.png[2]
+    && bytes[3] === MAGIC_BYTES.png[3];
 
-  const isWebp =
-    bytes[0] === MAGIC_BYTES.webp_riff[0] &&
-    bytes[1] === MAGIC_BYTES.webp_riff[1] &&
-    bytes[2] === MAGIC_BYTES.webp_riff[2] &&
-    bytes[3] === MAGIC_BYTES.webp_riff[3] &&
-    bytes[8] === 0x57 && // W
-    bytes[9] === 0x45 && // E
-    bytes[10] === 0x42 && // B
-    bytes[11] === 0x50;   // P
+  const isWebp = bytes[0] === MAGIC_BYTES.webp_riff[0]
+    && bytes[1] === MAGIC_BYTES.webp_riff[1]
+    && bytes[2] === MAGIC_BYTES.webp_riff[2]
+    && bytes[3] === MAGIC_BYTES.webp_riff[3]
+    && bytes[8] === 0x57 // W
+    && bytes[9] === 0x45 // E
+    && bytes[10] === 0x42 // B
+    && bytes[11] === 0x50; // P
 
   if (!isJpeg && !isPng && !isWebp) {
     throw new AppError('Invalid image format. Only JPEG, PNG, and WebP are accepted.', 400);
@@ -86,7 +83,7 @@ const uploadImage = (buffer, userId) => {
           url: result.secure_url,
           publicId: result.public_id,
         });
-      }
+      },
     );
 
     stream.end(buffer);

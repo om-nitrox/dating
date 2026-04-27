@@ -20,7 +20,7 @@ const likeSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Prevent duplicate likes / skips

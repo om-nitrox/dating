@@ -1,4 +1,3 @@
-const mongoose = require('mongoose');
 const User = require('../models/User');
 const Like = require('../models/Like');
 const Match = require('../models/Match');
@@ -32,7 +31,7 @@ const deleteAccount = async (userId) => {
       imageDeleteJobs.push(
         deleteImage(photo.publicId).catch((err) => {
           logger.warn({ publicId: photo.publicId, err: err.message }, 'Failed to delete photo during account deletion');
-        })
+        }),
       );
     });
   }
@@ -41,7 +40,7 @@ const deleteAccount = async (userId) => {
     imageDeleteJobs.push(
       deleteImage(user.selfiePhoto.publicId).catch((err) => {
         logger.warn({ publicId: user.selfiePhoto.publicId, err: err.message }, 'Failed to delete selfie during account deletion');
-      })
+      }),
     );
   }
 

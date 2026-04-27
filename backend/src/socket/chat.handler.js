@@ -14,7 +14,7 @@ const chatHandler = (io, socket) => {
       if (!match) return;
 
       const isParticipant = match.users.some(
-        (u) => u.toString() === socket.user.id
+        (u) => u.toString() === socket.user.id,
       );
 
       if (!isParticipant) return;
@@ -55,7 +55,7 @@ const chatHandler = (io, socket) => {
       const message = await messageService.sendMessage(
         matchId,
         socket.user.id,
-        trimmed
+        trimmed,
       );
 
       // Broadcast to everyone in the room (including sender for confirmation)

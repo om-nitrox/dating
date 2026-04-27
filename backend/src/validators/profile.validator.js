@@ -12,8 +12,7 @@ const {
 } = User.enums;
 
 // Allow clients to explicitly clear optional fields by sending null.
-const nullableString = (max) =>
-  Joi.string().trim().max(max).allow('', null);
+const nullableString = (max) => Joi.string().trim().max(max).allow('', null);
 
 const promptSchema = Joi.object({
   question: Joi.string().trim().max(120).required(),
@@ -75,9 +74,9 @@ const updateProfileSchema = Joi.object({
     genderPreference: Joi.string().valid(...GENDER_PREFERENCE_VALUES),
   }).custom((value, helpers) => {
     if (
-      value.ageMin !== undefined &&
-      value.ageMax !== undefined &&
-      value.ageMin > value.ageMax
+      value.ageMin !== undefined
+      && value.ageMax !== undefined
+      && value.ageMin > value.ageMax
     ) {
       return helpers.error('any.invalid', {
         message: 'ageMin must be ≤ ageMax',

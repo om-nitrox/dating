@@ -2,10 +2,14 @@ const mongoose = require('mongoose');
 
 const promptSchema = new mongoose.Schema(
   {
-    question: { type: String, required: true, trim: true, maxlength: 120 },
-    answer: { type: String, required: true, trim: true, maxlength: 225 },
+    question: {
+      type: String, required: true, trim: true, maxlength: 120,
+    },
+    answer: {
+      type: String, required: true, trim: true, maxlength: 225,
+    },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const mediaAssetSchema = new mongoose.Schema(
@@ -13,7 +17,7 @@ const mediaAssetSchema = new mongoose.Schema(
     url: { type: String, required: true },
     publicId: { type: String, required: true },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const fcmTokenSchema = new mongoose.Schema(
@@ -22,7 +26,7 @@ const fcmTokenSchema = new mongoose.Schema(
     deviceId: { type: String, required: true },
     addedAt: { type: Date, default: Date.now },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const GENDER_VALUES = ['male', 'female', 'nonbinary'];
@@ -239,7 +243,7 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // -------- Indexes --------

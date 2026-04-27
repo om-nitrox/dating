@@ -19,7 +19,7 @@ const uploadPhotos = catchAsync(async (req, res) => {
 const deletePhoto = catchAsync(async (req, res) => {
   const photos = await profileService.deletePhoto(
     req.user.id,
-    req.params.publicId
+    req.params.publicId,
   );
   res.status(200).json({ photos });
 });

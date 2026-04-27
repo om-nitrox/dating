@@ -61,7 +61,7 @@ const accept = async (userId, likeId) => {
   // Populate match for response
   const populatedMatch = await Match.findById(match._id).populate(
     'users',
-    'name age photos bio'
+    'name age photos bio',
   );
 
   return populatedMatch;

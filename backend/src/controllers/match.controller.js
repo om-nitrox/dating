@@ -6,7 +6,7 @@ const getMatches = catchAsync(async (req, res) => {
   const result = await matchService.getMatches(
     req.user.id,
     cursor || null,
-    parseInt(limit, 10) || 20
+    parseInt(limit, 10) || 20,
   );
   res.status(200).json(result);
 });

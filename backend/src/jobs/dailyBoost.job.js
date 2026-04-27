@@ -37,7 +37,7 @@ const initCronJobs = () => {
         const ids = users.map((u) => u._id);
         const result = await User.updateMany(
           { _id: { $in: ids } },
-          { $inc: { daysWithoutMatch: 1 } }
+          { $inc: { daysWithoutMatch: 1 } },
         );
 
         totalModified += result.modifiedCount;
@@ -62,7 +62,7 @@ const initCronJobs = () => {
           boostLevel: { $ne: 'none' },
           boostExpiry: { $lt: new Date() },
         },
-        { boostLevel: 'none', boostExpiry: null }
+        { boostLevel: 'none', boostExpiry: null },
       );
       if (result.modifiedCount > 0) {
         logger.info({ count: result.modifiedCount }, 'Cleared expired boosts');

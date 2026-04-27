@@ -57,4 +57,6 @@ const logout = catchAsync(async (req, res) => {
   res.status(200).json({ message: 'Logged out' });
 });
 
-module.exports = { signup, verifyOtp, googleAuth, refreshToken, logout };
+module.exports = {
+  signup, verifyOtp, googleAuth, refreshToken, logout,
+};

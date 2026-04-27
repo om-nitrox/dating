@@ -68,4 +68,6 @@ const cacheDelPattern = async (pattern) => {
   }
 };
 
-module.exports = { cacheGet, cacheSet, cacheDel, cacheDelPattern };
+module.exports = {
+  cacheGet, cacheSet, cacheDel, cacheDelPattern,
+};

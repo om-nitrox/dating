@@ -39,8 +39,7 @@ const ageFromDob = (dob) => {
   return age;
 };
 
-const computeIsProfileComplete = (user) =>
-  !!(user.name && user.age && user.gender && user.photos.length >= 2);
+const computeIsProfileComplete = (user) => !!(user.name && user.age && user.gender && user.photos.length >= 2);
 
 const stripPrivate = (userDoc) => {
   const obj = userDoc.toObject ? userDoc.toObject() : userDoc;
@@ -113,7 +112,7 @@ const uploadPhotos = async (userId, files) => {
   }
 
   const uploads = await Promise.all(
-    files.map((file) => uploadImage(file.buffer, userId))
+    files.map((file) => uploadImage(file.buffer, userId)),
   );
 
   user.photos.push(...uploads);

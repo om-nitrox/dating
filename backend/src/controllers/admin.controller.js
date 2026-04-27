@@ -26,4 +26,6 @@ const getUserProfile = catchAsync(async (req, res) => {
   res.status(200).json(result);
 });
 
-module.exports = { listReports, resolveReport, banUser, getUserProfile };
+module.exports = {
+  listReports, resolveReport, banUser, getUserProfile,
+};

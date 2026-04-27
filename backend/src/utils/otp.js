@@ -3,9 +3,7 @@ const nodemailer = require('nodemailer');
 const config = require('../config');
 const logger = require('./logger');
 
-const generateOtp = () => {
-  return crypto.randomInt(100000, 999999).toString();
-};
+const generateOtp = () => crypto.randomInt(100000, 999999).toString();
 
 let transporter = null;
 
