@@ -300,6 +300,13 @@ class _PhotoGrid extends StatelessWidget {
                 child: child,
               );
             },
+            footer: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _AddPhotoTile(
+                onTap: isUploading ? null : onAdd,
+                isUploading: isUploading,
+              ),
+            ),
             children: [
               for (var i = 0; i < photos.length; i++)
                 Padding(
@@ -312,13 +319,6 @@ class _PhotoGrid extends StatelessWidget {
                   ),
                 ),
             ],
-            footer: Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: _AddPhotoTile(
-                onTap: isUploading ? null : onAdd,
-                isUploading: isUploading,
-              ),
-            ),
           ),
         ),
       ],

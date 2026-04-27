@@ -1,5 +1,9 @@
 node_modules/
 .env
+.env.production
+.env.staging
 firebase-service-account.json
+serviceAccountKey.json
+*.jks
 *.log
 dist/

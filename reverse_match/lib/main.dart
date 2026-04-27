@@ -1,19 +1,17 @@
 import 'dart:async';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
+import 'core/services/firebase_messaging_service.dart';
 import 'core/theme/app_theme.dart';
+import 'firebase_options.dart';
 
 // To enable Sentry, add sentry_flutter to pubspec.yaml and uncomment:
 // import 'package:sentry_flutter/sentry_flutter.dart';
-
-// To enable Firebase, add firebase_core + firebase_messaging and uncomment:
-// import 'package:firebase_core/firebase_core.dart';
-
-/// Sentry DSN — set your DSN here or via environment config.
-const String _sentryDsn = '';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,23 +26,16 @@ void main() async {
           : '.env';
   await dotenv.load(fileName: envFile);
 
-  // Initialize Firebase (uncomment when firebase_core is added)
-  // await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  if (_sentryDsn.isNotEmpty) {
-    // Sentry wraps the app to capture errors (uncomment when sentry_flutter is added)
-    // await SentryFlutter.init(
-    //   (options) {
-    //     options.dsn = _sentryDsn;
-    //     options.tracesSampleRate = 0.1;
-    //     options.environment = 'production';
-    //   },
-    //   appRunner: () => _runApp(),
-    // );
-    _runApp();
-  } else {
-    _runApp();
-  }
+  // Background handler must be registered before any other FCM setup
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+  // Initialize FCM: permissions, token registration, notification handlers
+  final container = ProviderContainer();
+  await container.read(fcmServiceProvider).initAndRegister();
+
+  _runApp();
 }
 
 void _runApp() {

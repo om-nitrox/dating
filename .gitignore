@@ -27,6 +27,17 @@ reverse_match/.env.*
 # Secrets / keys
 *.pem
 *.key
+*.jks
+*.keystore
+*.p12
+
+# Android signing
+reverse_match/android/key.properties
+
+# Firebase credentials (downloaded from console)
+reverse_match/android/app/google-services.json
+reverse_match/ios/Runner/GoogleService-Info.plist
+backend/serviceAccountKey.json
 
 # Logs
 *.log

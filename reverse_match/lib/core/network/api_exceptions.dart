@@ -9,12 +9,11 @@ class AppException implements Exception {
 }
 
 class NetworkException extends AppException {
-  NetworkException([String message = 'No internet connection']) : super(message);
+  NetworkException([super.message = 'No internet connection']);
 }
 
 class ServerException extends AppException {
-  ServerException(String message, [int? statusCode])
-      : super(message, statusCode);
+  ServerException(super.message, [super.statusCode]);
 }
 
 class UnauthorizedException extends AppException {
@@ -22,5 +21,5 @@ class UnauthorizedException extends AppException {
 }
 
 class TimeoutException extends AppException {
-  TimeoutException([String message = 'Request timed out']) : super(message);
+  TimeoutException([super.message = 'Request timed out']);
 }
