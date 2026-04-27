@@ -3,8 +3,11 @@ const Match = require('../models/Match');
 const AppError = require('../utils/AppError');
 const { sendPush } = require('./notification.service');
 
-const getMessages = async (matchId, userId, page = 1, limit = 50) => {
-  // Verify user is a participant
+/**
+ * Get messages for a match using cursor-based pagination.
+ * cursor is the last seen message _id; returns older messages.
+ */
+const getMessages = async (matchId, userId, cursor, limit = 30) => {
   const match = await Match.findById(matchId);
   if (!match) throw new AppError('Match not found', 404);
 
@@ -12,21 +15,25 @@ const getMessages = async (matchId, userId, page = 1, limit = 50) => {
     throw new AppError('Unauthorized', 403);
   }
 
-  const skip = (page - 1) * limit;
+  const filter = { matchId };
+  if (cursor) {
+    filter._id = { $lt: cursor };
+  }
 
-  const messages = await Message.find({ matchId })
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .select('sender text seen createdAt');
+  const messages = await Message.find(filter)
+    .sort({ _id: -1 })
+    .limit(limit + 1)
+    .select('sender text seen seenAt createdAt');
 
-  const total = await Message.countDocuments({ matchId });
+  const hasMore = messages.length > limit;
+  if (hasMore) messages.pop();
+
+  const nextCursor = hasMore ? messages[messages.length - 1]._id.toString() : null;
 
   return {
-    messages: messages.reverse(), // Return oldest-first for display
-    page,
-    totalPages: Math.ceil(total / limit),
-    hasMore: skip + limit < total,
+    messages: messages.reverse(),
+    nextCursor,
+    hasMore,
   };
 };
 
@@ -44,7 +51,6 @@ const sendMessage = async (matchId, senderId, text) => {
     text,
   });
 
-  // Find the other user and send push if offline
   const recipientId = match.users.find(
     (u) => u.toString() !== senderId.toString()
   );
@@ -64,7 +70,7 @@ const markSeen = async (matchId, userId) => {
       sender: { $ne: userId },
       seen: false,
     },
-    { seen: true }
+    { seen: true, seenAt: new Date() }
   );
 };
 

@@ -12,6 +12,7 @@ const messageRoutes = require('./message.routes');
 const boostRoutes = require('./boost.routes');
 const safetyRoutes = require('./safety.routes');
 const accountRoutes = require('./account.routes');
+const adminRoutes = require('./admin.routes');
 
 const router = Router();
 
@@ -30,5 +31,8 @@ router.use('/messages', auth, messageRoutes);
 router.use('/boost', auth, requireGender('male'), boostRoutes);
 router.use('/', auth, safetyRoutes);
 router.use('/', auth, accountRoutes);
+
+// Admin routes — auth middleware already applied, isAdmin checked inside admin.routes.js
+router.use('/admin', auth, adminRoutes);
 
 module.exports = router;

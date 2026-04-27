@@ -1,10 +1,10 @@
 const User = require('../models/User');
 const { uploadImage, deleteImage } = require('./upload.service');
+const { upsertFcmToken } = require('./notification.service');
 const AppError = require('../utils/AppError');
 
-// Fields that clients are allowed to update directly via PUT /profile.
-// refreshToken, isVerified, selfiePhoto, boost* are intentionally excluded —
-// they are mutated by dedicated endpoints or server-side logic.
+const MAX_PHOTOS = 6;
+
 const UPDATABLE_FIELDS = [
   'name',
   'dob',
@@ -28,7 +28,6 @@ const UPDATABLE_FIELDS = [
   'languages',
   'datingIntentions',
   'relationshipType',
-  'fcmToken',
 ];
 
 const ageFromDob = (dob) => {
@@ -40,23 +39,20 @@ const ageFromDob = (dob) => {
   return age;
 };
 
-/**
- * A profile is "complete" when the user can realistically appear in the feed.
- * We only require the bare minimum — everything Hinge-style is optional.
- */
 const computeIsProfileComplete = (user) =>
   !!(user.name && user.age && user.gender && user.photos.length >= 2);
 
 const stripPrivate = (userDoc) => {
   const obj = userDoc.toObject ? userDoc.toObject() : userDoc;
   delete obj.refreshToken;
+  delete obj.fcmTokens;
   delete obj.selfiePhoto;
   delete obj.__v;
   return obj;
 };
 
 const getProfile = async (userId) => {
-  const user = await User.findById(userId).select('-refreshToken -__v');
+  const user = await User.findById(userId).select('-refreshToken -fcmTokens -__v');
   if (!user) throw new AppError('User not found', 404);
   return user;
 };
@@ -77,7 +73,6 @@ const updateProfile = async (userId, data) => {
     }
   }
 
-  // Nested merges — these are objects whose sub-keys we want to patch, not replace.
   if (data.location) {
     user.location = {
       type: 'Point',
@@ -109,8 +104,12 @@ const uploadPhotos = async (userId, files) => {
   const user = await User.findById(userId);
   if (!user) throw new AppError('User not found', 404);
 
-  if (user.photos.length + files.length > 6) {
-    throw new AppError('Maximum 6 photos allowed', 400);
+  if (user.photos.length >= MAX_PHOTOS) {
+    throw new AppError(`Maximum ${MAX_PHOTOS} photos allowed`, 400);
+  }
+
+  if (user.photos.length + files.length > MAX_PHOTOS) {
+    throw new AppError(`Cannot upload ${files.length} photos: would exceed the ${MAX_PHOTOS}-photo limit`, 400);
   }
 
   const uploads = await Promise.all(
@@ -139,9 +138,6 @@ const deletePhoto = async (userId, publicId) => {
   return user.photos;
 };
 
-/**
- * Reorder photos by receiving the full array of publicIds in the desired order.
- */
 const reorderPhotos = async (userId, orderedPublicIds) => {
   const user = await User.findById(userId);
   if (!user) throw new AppError('User not found', 404);
@@ -164,11 +160,6 @@ const reorderPhotos = async (userId, orderedPublicIds) => {
   return user.photos;
 };
 
-/**
- * Store the user's selfie for verification.
- * Replaces any existing selfie. Sets isVerified=true in the current MVP.
- * The selfie is stored privately — never projected to other users.
- */
 const uploadSelfie = async (userId, file) => {
   const user = await User.findById(userId);
   if (!user) throw new AppError('User not found', 404);
@@ -176,11 +167,8 @@ const uploadSelfie = async (userId, file) => {
 
   const asset = await uploadImage(file.buffer, `${userId}/selfie`);
 
-  // Replace previous selfie if one exists
   if (user.selfiePhoto?.publicId) {
-    deleteImage(user.selfiePhoto.publicId).catch(() => {
-      /* non-fatal — old asset may already be gone */
-    });
+    deleteImage(user.selfiePhoto.publicId).catch(() => {});
   }
 
   user.selfiePhoto = asset;
@@ -190,6 +178,18 @@ const uploadSelfie = async (userId, file) => {
   return { isVerified: true };
 };
 
+/**
+ * Register or update an FCM token for the given device.
+ * Called when the client registers its push token after login.
+ */
+const registerFcmToken = async (userId, token, deviceId) => {
+  if (!token || !deviceId) {
+    throw new AppError('token and deviceId are required', 400);
+  }
+  await upsertFcmToken(userId, token, deviceId);
+  return { message: 'FCM token registered' };
+};
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -197,4 +197,5 @@ module.exports = {
   deletePhoto,
   reorderPhotos,
   uploadSelfie,
+  registerFcmToken,
 };

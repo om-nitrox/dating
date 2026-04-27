@@ -4,11 +4,25 @@ const Otp = require('../models/Otp');
 const config = require('../config');
 const { generateOtp, sendOtpEmail } = require('../utils/otp');
 const { signAccessToken, signRefreshToken, verifyRefreshToken, hashRefreshToken } = require('../utils/token');
+const { getRedis } = require('../config/redis');
 const AppError = require('../utils/AppError');
 
 const googleClient = config.googleClientId
   ? new OAuth2Client(config.googleClientId)
   : null;
+
+const MIN_AGE_MS = 18 * 365.25 * 24 * 60 * 60 * 1000;
+
+const validateAge = (dateOfBirth) => {
+  const dob = new Date(dateOfBirth);
+  if (Number.isNaN(dob.getTime())) {
+    throw new AppError('Invalid date of birth', 400);
+  }
+  if (Date.now() - dob.getTime() < MIN_AGE_MS) {
+    throw new AppError('You must be 18 or older to use Reverse Match', 400);
+  }
+  return dob;
+};
 
 const sendOtp = async (email) => {
   const code = generateOtp();
@@ -16,14 +30,13 @@ const sendOtp = async (email) => {
 
   // Remove any existing OTPs for this email
   await Otp.deleteMany({ email });
-
   await Otp.create({ email, code, expiresAt });
   await sendOtpEmail(email, code);
 
   return { message: 'OTP sent successfully' };
 };
 
-const verifyOtp = async (email, code) => {
+const verifyOtp = async (email, code, dateOfBirth) => {
   const otp = await Otp.findOne({ email, code });
 
   if (!otp) {
@@ -35,22 +48,28 @@ const verifyOtp = async (email, code) => {
     throw new AppError('OTP expired', 400);
   }
 
-  // Clean up used OTP
   await Otp.deleteMany({ email });
 
-  // Find or create user
   let user = await User.findOne({ email });
   let isNewUser = false;
 
   if (!user) {
-    user = await User.create({ email });
+    if (!dateOfBirth) {
+      throw new AppError('Date of birth is required for new users', 400);
+    }
+    const dob = validateAge(dateOfBirth);
+    user = await User.create({ email, dob });
     isNewUser = true;
+  }
+
+  if (user.banned) {
+    throw new AppError('Your account has been suspended', 403);
   }
 
   return issueTokens(user, isNewUser);
 };
 
-const googleLogin = async (idToken) => {
+const googleLogin = async (idToken, dateOfBirth) => {
   if (!googleClient) {
     throw new AppError('Google login not configured', 500);
   }
@@ -67,16 +86,29 @@ const googleLogin = async (idToken) => {
   let isNewUser = false;
 
   if (!user) {
-    user = await User.create({ email, googleId, name });
+    if (!dateOfBirth) {
+      throw new AppError('Date of birth is required for new users', 400);
+    }
+    const dob = validateAge(dateOfBirth);
+    user = await User.create({ email, googleId, name, dob });
     isNewUser = true;
   } else if (!user.googleId) {
     user.googleId = googleId;
     await user.save();
   }
 
+  if (user.banned) {
+    throw new AppError('Your account has been suspended', 403);
+  }
+
   return issueTokens(user, isNewUser);
 };
 
+/**
+ * Atomic refresh token rotation using findOneAndUpdate.
+ * Only one concurrent request with the same token can succeed —
+ * the filter { refreshToken: oldHash } ensures only one wins the race.
+ */
 const refreshTokens = async (token) => {
   let decoded;
   try {
@@ -85,31 +117,50 @@ const refreshTokens = async (token) => {
     throw new AppError('Invalid refresh token', 401);
   }
 
-  const user = await User.findById(decoded.id);
-
-  // Compare hashed token
   const hashedIncoming = hashRefreshToken(token);
-  if (!user || user.refreshToken !== hashedIncoming) {
-    // Possible token reuse attack — invalidate all tokens for this user
-    if (user) {
-      user.refreshToken = null;
-      await user.save();
-    }
+  const newRefreshToken = signRefreshToken(decoded.id);
+  const newHash = hashRefreshToken(newRefreshToken);
+
+  // Atomic swap: only succeeds if the old hash is still in the DB
+  const user = await User.findOneAndUpdate(
+    { _id: decoded.id, refreshToken: hashedIncoming },
+    { refreshToken: newHash },
+    { new: true }
+  );
+
+  if (!user) {
+    // Token already consumed — possible replay attack; invalidate all tokens
+    await User.findByIdAndUpdate(decoded.id, { refreshToken: null });
     throw new AppError('Invalid refresh token', 401);
   }
 
+  if (user.banned) {
+    throw new AppError('Your account has been suspended', 403);
+  }
+
   const accessToken = signAccessToken(user._id, user.gender);
-  const refreshToken = signRefreshToken(user._id);
 
-  // Store hash of new refresh token
-  user.refreshToken = hashRefreshToken(refreshToken);
-  await user.save();
-
-  return { accessToken, refreshToken };
+  return { accessToken, refreshToken: newRefreshToken };
 };
 
-const logout = async (userId) => {
+/**
+ * Logout: clear refresh token and blacklist the current access token's jti.
+ */
+const logout = async (userId, accessTokenMeta) => {
   await User.findByIdAndUpdate(userId, { refreshToken: null });
+
+  // Blacklist the access token so it can't be reused until it naturally expires
+  if (accessTokenMeta?.jti && accessTokenMeta?.exp) {
+    const ttl = accessTokenMeta.exp - Math.floor(Date.now() / 1000);
+    if (ttl > 0) {
+      try {
+        const redis = getRedis();
+        await redis.set(`blacklist:${accessTokenMeta.jti}`, '1', 'EX', ttl);
+      } catch (_) {
+        // Non-fatal — token will expire naturally
+      }
+    }
+  }
 };
 
 /**
@@ -119,7 +170,6 @@ const issueTokens = async (user, isNewUser) => {
   const accessToken = signAccessToken(user._id, user.gender);
   const refreshToken = signRefreshToken(user._id);
 
-  // Store SHA-256 hash of refresh token (not plain text)
   user.refreshToken = hashRefreshToken(refreshToken);
   await user.save();
 
@@ -134,6 +184,7 @@ const issueTokens = async (user, isNewUser) => {
 const sanitizeUser = (user) => {
   const obj = user.toObject();
   delete obj.refreshToken;
+  delete obj.fcmTokens;
   delete obj.__v;
   return obj;
 };

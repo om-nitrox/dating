@@ -1,9 +1,5 @@
 const mongoose = require('mongoose');
 
-/**
- * Single prompt answer displayed on the profile.
- * question is the prompt text (max 120), answer is up to 225 chars (Hinge parity).
- */
 const promptSchema = new mongoose.Schema(
   {
     question: { type: String, required: true, trim: true, maxlength: 120 },
@@ -20,8 +16,15 @@ const mediaAssetSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// Controlled vocabularies — kept in one place so validators and model stay in sync.
-// Exported at the bottom for reuse in profile.validator.js.
+const fcmTokenSchema = new mongoose.Schema(
+  {
+    token: { type: String, required: true },
+    deviceId: { type: String, required: true },
+    addedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const GENDER_VALUES = ['male', 'female', 'nonbinary'];
 const GENDER_PREFERENCE_VALUES = ['men', 'women', 'everyone'];
 const FREQUENCY_VALUES = ['yes', 'sometimes', 'rarely', 'no', 'prefer_not_to_say'];
@@ -74,7 +77,6 @@ const userSchema = new mongoose.Schema(
     },
     dob: {
       type: Date,
-      // Private — never projected to other users. Age is derived and shown instead.
     },
     gender: {
       type: String,
@@ -106,7 +108,7 @@ const userSchema = new mongoose.Schema(
 
     // -------- vitals --------
     height: {
-      type: Number, // centimetres
+      type: Number,
       min: 120,
       max: 250,
     },
@@ -161,7 +163,7 @@ const userSchema = new mongoose.Schema(
         default: 'Point',
       },
       coordinates: {
-        type: [Number], // [longitude, latitude]
+        type: [Number],
         default: [0, 0],
       },
       city: String,
@@ -172,7 +174,7 @@ const userSchema = new mongoose.Schema(
     preferences: {
       ageMin: { type: Number, default: 18, min: 18 },
       ageMax: { type: Number, default: 50, max: 100 },
-      maxDistance: { type: Number, default: 50 }, // km
+      maxDistance: { type: Number, default: 50 },
       genderPreference: {
         type: String,
         enum: GENDER_PREFERENCE_VALUES,
@@ -182,7 +184,6 @@ const userSchema = new mongoose.Schema(
     // -------- verification --------
     selfiePhoto: {
       type: mediaAssetSchema,
-      // Private — never projected to other users; used only for moderation + isVerified gating.
       default: null,
     },
     isVerified: {
@@ -190,7 +191,7 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
-    // -------- existing --------
+    // -------- status --------
     daysWithoutMatch: {
       type: Number,
       default: 0,
@@ -203,12 +204,30 @@ const userSchema = new mongoose.Schema(
     boostExpiry: {
       type: Date,
     },
-    fcmToken: {
-      type: String,
+
+    // -------- notifications (multi-device) --------
+    fcmTokens: {
+      type: [fcmTokenSchema],
+      default: [],
     },
+
+    // -------- auth --------
     refreshToken: {
       type: String,
     },
+
+    // -------- moderation --------
+    banned: {
+      type: Boolean,
+      default: false,
+    },
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
+    },
+
+    // -------- computed --------
     isProfileComplete: {
       type: Boolean,
       default: false,
@@ -223,15 +242,16 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Indexes (email index is auto-created by unique: true on the field)
+// -------- Indexes --------
+// Geo queries for feed
 userSchema.index({ location: '2dsphere' });
 userSchema.index({ gender: 1, isActive: 1, isProfileComplete: 1 });
-userSchema.index({ boostLevel: 1, boostExpiry: 1 }); // For expired boost cleanup cron
-userSchema.index({ daysWithoutMatch: -1 }); // For feed sorting
 
-const User = mongoose.model('User', userSchema);
+// Boost / feed scoring
+userSchema.index({ boostLevel: 1, boostExpiry: 1 });
+userSchema.index({ daysWithoutMatch: -1 });
 
-module.exports = User;
+module.exports = mongoose.model('User', userSchema);
 module.exports.enums = {
   GENDER_VALUES,
   GENDER_PREFERENCE_VALUES,

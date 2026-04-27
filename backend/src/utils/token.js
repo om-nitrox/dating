@@ -4,7 +4,7 @@ const config = require('../config');
 
 const signAccessToken = (userId, gender) => {
   return jwt.sign(
-    { id: userId, gender },
+    { id: userId, gender, jti: crypto.randomUUID() },
     config.jwtAccessSecret,
     { expiresIn: config.jwtAccessExpiry }
   );
@@ -28,8 +28,7 @@ const verifyRefreshToken = (token) => {
 
 /**
  * Hash a refresh token using SHA-256 for secure storage.
- * Refresh tokens are already high-entropy JWTs, so SHA-256 is sufficient
- * (no need for bcrypt's slow hashing which is designed for low-entropy passwords).
+ * Refresh tokens are already high-entropy JWTs, so SHA-256 is sufficient.
  */
 const hashRefreshToken = (token) => {
   return crypto.createHash('sha256').update(token).digest('hex');
