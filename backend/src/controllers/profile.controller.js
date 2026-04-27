@@ -19,7 +19,7 @@ const uploadPhotos = catchAsync(async (req, res) => {
 const deletePhoto = catchAsync(async (req, res) => {
   const photos = await profileService.deletePhoto(
     req.user.id,
-    req.params.publicId
+    req.params.publicId,
   );
   res.status(200).json({ photos });
 });
@@ -34,6 +34,13 @@ const uploadSelfie = catchAsync(async (req, res) => {
   res.status(200).json(result);
 });
 
+const registerFcmToken = catchAsync(async (req, res) => {
+  const { token } = req.body;
+  const deviceId = req.body.deviceId || req.headers['x-device-id'];
+  const result = await profileService.registerFcmToken(req.user.id, token, deviceId);
+  res.status(200).json(result);
+});
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -41,4 +48,5 @@ module.exports = {
   deletePhoto,
   reorderPhotos,
   uploadSelfie,
+  registerFcmToken,
 };

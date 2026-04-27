@@ -28,4 +28,6 @@ const getBoostStatus = catchAsync(async (req, res) => {
   res.status(200).json(status);
 });
 
-module.exports = { getPlans, purchaseBoost, handleWebhook, getBoostStatus };
+module.exports = {
+  getPlans, purchaseBoost, handleWebhook, getBoostStatus,
+};

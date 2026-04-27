@@ -7,3 +7,20 @@ serviceAccountKey.json
 *.jks
 *.log
 dist/
+
+# Test artifacts
+coverage/
+.nyc_output/
+*.lcov
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Misc
+*.pid
+*.seed
+*.tgz
+.eslintcache

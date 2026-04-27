@@ -6,7 +6,7 @@ const getFeed = catchAsync(async (req, res) => {
   const result = await swipeService.getFeed(
     req.user.id,
     cursor,
-    parseInt(limit) || 20
+    parseInt(limit) || 20,
   );
   res.status(200).json(result);
 });
@@ -35,4 +35,6 @@ const undoLastSkip = catchAsync(async (req, res) => {
   res.status(200).json(result);
 });
 
-module.exports = { getFeed, like, skip, undoLastSkip };
+module.exports = {
+  getFeed, like, skip, undoLastSkip,
+};

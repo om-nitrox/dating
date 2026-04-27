@@ -11,14 +11,12 @@ const BOOST_PLANS = {
   gold: { price: 1999, duration: 7, label: 'Gold - 7 Days' },
 };
 
-const getPlans = () => {
-  return Object.entries(BOOST_PLANS).map(([tier, plan]) => ({
-    tier,
-    price: plan.price, // in cents
-    duration: plan.duration,
-    label: plan.label,
-  }));
-};
+const getPlans = () => Object.entries(BOOST_PLANS).map(([tier, plan]) => ({
+  tier,
+  price: plan.price, // in cents
+  duration: plan.duration,
+  label: plan.label,
+}));
 
 const purchaseBoost = async (userId, tier) => {
   if (!stripe) throw new AppError('Payments not configured', 500);
@@ -69,7 +67,7 @@ const handleStripeWebhook = async (rawBody, signature) => {
   const event = stripe.webhooks.constructEvent(
     rawBody,
     signature,
-    config.stripeWebhookSecret
+    config.stripeWebhookSecret,
   );
 
   // Idempotency check — skip already-processed events
@@ -101,10 +99,9 @@ const getBoostStatus = async (userId) => {
   const user = await User.findById(userId).select('boostLevel boostExpiry');
   if (!user) throw new AppError('User not found', 404);
 
-  const isActive =
-    user.boostLevel !== 'none' &&
-    user.boostExpiry &&
-    user.boostExpiry > new Date();
+  const isActive = user.boostLevel !== 'none'
+    && user.boostExpiry
+    && user.boostExpiry > new Date();
 
   return {
     boostLevel: isActive ? user.boostLevel : 'none',
@@ -113,4 +110,6 @@ const getBoostStatus = async (userId) => {
   };
 };
 
-module.exports = { getPlans, purchaseBoost, activateBoost, handleStripeWebhook, getBoostStatus };
+module.exports = {
+  getPlans, purchaseBoost, activateBoost, handleStripeWebhook, getBoostStatus,
+};

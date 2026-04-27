@@ -31,14 +31,15 @@ void main() async {
   // Background handler must be registered before any other FCM setup
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  // Initialize FCM: permissions, token registration, notification handlers
+  // One ProviderContainer for the whole app. We initialize FCM through it
+  // before runApp so the same Dio/SecureStorage instances are reused later.
   final container = ProviderContainer();
   await container.read(fcmServiceProvider).initAndRegister();
 
-  _runApp();
+  _runApp(container);
 }
 
-void _runApp() {
+void _runApp(ProviderContainer container) {
   // Catch uncaught Flutter errors
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -48,8 +49,9 @@ void _runApp() {
   runZonedGuarded(
     () {
       runApp(
-        const ProviderScope(
-          child: ReverseMatchApp(),
+        UncontrolledProviderScope(
+          container: container,
+          child: const ReverseMatchApp(),
         ),
       );
     },

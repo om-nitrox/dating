@@ -15,7 +15,7 @@ const blockSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 blockSchema.index({ blocker: 1, blocked: 1 }, { unique: true });

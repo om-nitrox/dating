@@ -12,7 +12,7 @@ const matchSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 matchSchema.index({ users: 1 });

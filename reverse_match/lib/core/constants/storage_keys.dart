@@ -6,4 +6,5 @@ class StorageKeys {
   static const String profileComplete = 'profile_complete';
   static const String onboardingSeen = 'onboarding_seen';
   static const String fcmToken = 'fcm_token';
+  static const String deviceId = 'device_id';
 }

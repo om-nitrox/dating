@@ -53,11 +53,7 @@ const getFeed = async (userId, cursor, limit = 20) => {
       Like.find({ fromUser: userId }).distinct('toUser'),
       Block.find({
         $or: [{ blocker: userId }, { blocked: userId }],
-      }).then((blocks) =>
-        blocks.map((b) =>
-          b.blocker.toString() === userId.toString() ? b.blocked : b.blocker
-        )
-      ),
+      }).then((blocks) => blocks.map((b) => (b.blocker.toString() === userId.toString() ? b.blocked : b.blocker))),
     ]);
 
     const excludeStringIds = [
@@ -78,9 +74,9 @@ const getFeed = async (userId, cursor, limit = 20) => {
 
   // Geo filter if girl has location
   if (
-    girl.location?.coordinates &&
-    girl.location.coordinates[0] !== 0 &&
-    girl.location.coordinates[1] !== 0
+    girl.location?.coordinates
+    && girl.location.coordinates[0] !== 0
+    && girl.location.coordinates[1] !== 0
   ) {
     pipeline.push({
       $geoNear: {
@@ -203,10 +199,9 @@ const getFeed = async (userId, cursor, limit = 20) => {
 
   const profiles = await User.aggregate(pipeline).option({ maxTimeMS: 10000 });
 
-  const nextCursor =
-    profiles.length === limit
-      ? profiles[profiles.length - 1]._id.toString()
-      : null;
+  const nextCursor = profiles.length === limit
+    ? profiles[profiles.length - 1]._id.toString()
+    : null;
 
   const result = { profiles, nextCursor };
 
@@ -314,4 +309,6 @@ const undoLastSkip = async (userId) => {
   return { message: 'Skip undone', undoneUserId: lastSkip.toUser.toString() };
 };
 
-module.exports = { getFeed, like, skip, undoLastSkip, getEffectiveBoost, getAutoBoostTier };
+module.exports = {
+  getFeed, like, skip, undoLastSkip, getEffectiveBoost, getAutoBoostTier,
+};

@@ -21,12 +21,16 @@ const messageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    seenAt: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
-messageSchema.index({ matchId: 1, createdAt: 1 });
+// Newest-first for cursor pagination; also used by markSeen queries
+messageSchema.index({ matchId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Message', messageSchema);

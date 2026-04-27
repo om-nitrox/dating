@@ -6,7 +6,7 @@ const reportUser = catchAsync(async (req, res) => {
     req.user.id,
     req.body.userId,
     req.body.reason,
-    req.body.details
+    req.body.details,
   );
   res.status(201).json(result);
 });

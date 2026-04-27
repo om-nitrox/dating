@@ -24,7 +24,7 @@ app.set('trust proxy', 1);
 app.post(
   '/api/v1/boost/webhook',
   express.raw({ type: 'application/json' }),
-  require('./controllers/boost.controller').handleWebhook
+  require('./controllers/boost.controller').handleWebhook,
 );
 
 // Security middleware
@@ -38,7 +38,7 @@ app.use(
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     maxAge: 86400, // Preflight cache 24h
-  })
+  }),
 );
 
 app.use(compression());
@@ -56,7 +56,7 @@ if (config.nodeEnv === 'development') {
   app.use(
     morgan(':method :url :status :response-time ms', {
       stream: { write: (msg) => logger.info(msg.trim()) },
-    })
+    }),
   );
 }
 

@@ -11,42 +11,59 @@ const { cacheDelPattern } = require('../utils/cache');
 
 /**
  * Permanently delete a user account and all associated data.
+ * Steps run in a logical order; related documents are removed before the user doc.
  */
 const deleteAccount = async (userId) => {
   const user = await User.findById(userId);
   if (!user) throw new AppError('User not found', 404);
 
-  // 1. Delete all photos from Cloudinary
-  if (user.photos && user.photos.length > 0) {
-    const deletePromises = user.photos.map((photo) =>
-      deleteImage(photo.publicId).catch((err) => {
-        logger.warn({ publicId: photo.publicId, err: err.message }, 'Failed to delete photo during account deletion');
-      })
-    );
-    await Promise.all(deletePromises);
+  // 1. Revoke all FCM tokens (in-memory, before deletion)
+  if (user.fcmTokens && user.fcmTokens.length > 0) {
+    user.fcmTokens = [];
+    await user.save();
   }
 
-  // 2. Find all matches involving this user to delete messages
+  // 2. Delete all photos from Cloudinary (profile + selfie)
+  const imageDeleteJobs = [];
+
+  if (user.photos && user.photos.length > 0) {
+    user.photos.forEach((photo) => {
+      imageDeleteJobs.push(
+        deleteImage(photo.publicId).catch((err) => {
+          logger.warn({ publicId: photo.publicId, err: err.message }, 'Failed to delete photo during account deletion');
+        }),
+      );
+    });
+  }
+
+  if (user.selfiePhoto?.publicId) {
+    imageDeleteJobs.push(
+      deleteImage(user.selfiePhoto.publicId).catch((err) => {
+        logger.warn({ publicId: user.selfiePhoto.publicId, err: err.message }, 'Failed to delete selfie during account deletion');
+      }),
+    );
+  }
+
+  await Promise.all(imageDeleteJobs);
+
+  // 3. Find all matches to be able to delete their messages
   const matches = await Match.find({ users: userId }).select('_id');
   const matchIds = matches.map((m) => m._id);
 
-  // 3. Delete all associated data in parallel
+  // 4. Delete all associated data in parallel
   await Promise.all([
-    // Delete messages in all matches
-    matchIds.length > 0 ? Message.deleteMany({ matchId: { $in: matchIds } }) : Promise.resolve(),
-    // Delete matches
+    matchIds.length > 0
+      ? Message.deleteMany({ matchId: { $in: matchIds } })
+      : Promise.resolve(),
     Match.deleteMany({ users: userId }),
-    // Delete likes (sent and received)
     Like.deleteMany({ $or: [{ fromUser: userId }, { toUser: userId }] }),
-    // Delete blocks
     Block.deleteMany({ $or: [{ blocker: userId }, { blocked: userId }] }),
-    // Delete reports (as reporter — keep reports against this user for records)
     Report.deleteMany({ reporter: userId }),
-    // Invalidate caches
     cacheDelPattern(`feed:${userId}:*`),
+    cacheDelPattern(`exclude:${userId}`),
   ]);
 
-  // 4. Delete user document
+  // 5. Delete user document last
   await User.findByIdAndDelete(userId);
 
   logger.info({ userId }, 'Account deleted');
