@@ -82,7 +82,7 @@ describe('POST /api/v1/auth/verify-otp', () => {
     expect(res.status).toBe(400);
   });
 
-  it('requires dateOfBirth for new user', async () => {
+  it('creates new user without dateOfBirth (DOB collected during onboarding)', async () => {
     await Otp.create({
       email: 'newuser@test.com',
       code: '123456',
@@ -93,8 +93,9 @@ describe('POST /api/v1/auth/verify-otp', () => {
       .post('/api/v1/auth/verify-otp')
       .send({ email: 'newuser@test.com', code: '123456' });
 
-    expect(res.status).toBe(400);
-    expect(res.body.message || res.body.error?.message).toMatch(/date of birth/i);
+    expect(res.status).toBe(200);
+    expect(res.body.isNewUser).toBe(true);
+    expect(res.body.accessToken).toBeDefined();
   });
 
   it('rejects underage new user', async () => {

@@ -97,12 +97,16 @@ describe('verifyOtp', () => {
     expect(result.isNewUser).toBe(true);
   });
 
-  it('rejects new user without dateOfBirth', async () => {
+  it('creates new user without dateOfBirth (collected later in onboarding)', async () => {
     Otp.findOne = jest.fn().mockResolvedValue(validOtp);
     Otp.deleteMany = jest.fn().mockResolvedValue({});
     User.findOne = jest.fn().mockResolvedValue(null);
+    User.create = jest.fn().mockResolvedValue({ ...mockUser });
 
-    await expect(authService.verifyOtp('test@example.com', '123456')).rejects.toThrow('Date of birth is required');
+    const result = await authService.verifyOtp('test@example.com', '123456');
+
+    expect(User.create).toHaveBeenCalledWith({ email: 'test@example.com' });
+    expect(result.isNewUser).toBe(true);
   });
 
   it('rejects underage users', async () => {

@@ -69,7 +69,11 @@ class FcmService {
     try {
       final stored = await _storage.getAccessToken();
       if (stored == null) return;
-      await _dio.put(ApiEndpoints.profile, data: {'fcmToken': token});
+      final deviceId = await _storage.getOrCreateDeviceId();
+      await _dio.post(
+        ApiEndpoints.fcmToken,
+        data: {'token': token, 'deviceId': deviceId},
+      );
       debugPrint('FCM token registered');
     } catch (e) {
       debugPrint('FCM token registration failed: $e');

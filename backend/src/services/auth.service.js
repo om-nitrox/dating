@@ -54,11 +54,10 @@ const verifyOtp = async (email, code, dateOfBirth) => {
   let isNewUser = false;
 
   if (!user) {
-    if (!dateOfBirth) {
-      throw new AppError('Date of birth is required for new users', 400);
-    }
-    const dob = validateAge(dateOfBirth);
-    user = await User.create({ email, dob });
+    // DOB is optional at signup; users provide it during the onboarding flow
+    // (see PUT /profile). When supplied here we still validate the 18+ rule.
+    const dob = dateOfBirth ? validateAge(dateOfBirth) : undefined;
+    user = await User.create(dob ? { email, dob } : { email });
     isNewUser = true;
   }
 
@@ -86,11 +85,11 @@ const googleLogin = async (idToken, dateOfBirth) => {
   let isNewUser = false;
 
   if (!user) {
-    if (!dateOfBirth) {
-      throw new AppError('Date of birth is required for new users', 400);
-    }
-    const dob = validateAge(dateOfBirth);
-    user = await User.create({ email, googleId, name, dob });
+    // DOB is optional at signup; collected later during onboarding via PUT /profile.
+    const dob = dateOfBirth ? validateAge(dateOfBirth) : undefined;
+    const fields = { email, googleId, name };
+    if (dob) fields.dob = dob;
+    user = await User.create(fields);
     isNewUser = true;
   } else if (!user.googleId) {
     user.googleId = googleId;
