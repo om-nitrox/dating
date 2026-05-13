@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Report = require('../models/Report');
 const Match = require('../models/Match');
+const config = require('../config');
 const { getRedis } = require('../config/redis');
 const { sendPush } = require('./notification.service');
 const AppError = require('../utils/AppError');
@@ -71,7 +72,15 @@ const banUserById = async (targetUserId, adminId) => {
   // For immediate revocation, maintain a banned-users set in Redis.
   try {
     const redis = getRedis();
-    await redis.set(`banned:${targetUserId}`, '1');
+    // Always set with a TTL — without it a banned-flag could linger forever
+    // even after the underlying user is reinstated or deleted.  The TTL is
+    // sized to outlive any in-flight access token.
+    await redis.set(
+      `banned:${targetUserId}`,
+      '1',
+      'EX',
+      config.jwtAccessExpirySeconds,
+    );
   } catch (_) {}
 
   sendPush(targetUserId, 'Account Suspended', 'Your Reverse Match account has been suspended for violating community guidelines.', {

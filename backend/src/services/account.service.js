@@ -8,63 +8,84 @@ const { deleteImage } = require('./upload.service');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
 const { cacheDelPattern } = require('../utils/cache');
+const withTransaction = require('../utils/withTransaction');
+
+const sessionOpt = (session) => (session ? { session } : {});
 
 /**
  * Permanently delete a user account and all associated data.
- * Steps run in a logical order; related documents are removed before the user doc.
+ *
+ * The multi-document cascade (User + Likes + Matches + Messages + Blocks +
+ * Reports) runs inside a Mongo transaction when supported by the cluster so a
+ * partial failure rolls everything back. Cloudinary deletes and Redis cache
+ * cleanup run AFTER the transaction commits — they are best-effort and any
+ * orphans are reaped by the image-cleanup job (see deletePhoto for the same
+ * mongo-first, cloudinary-second pattern).
+ *
+ * Sockets owned by the user are forcibly disconnected once all DB cascades
+ * have committed. We synchronously call `socket.disconnect(true)` (the socket
+ * cleanly tears down on the next tick — no need to await).
  */
-const deleteAccount = async (userId) => {
+const deleteAccount = async (userId, io) => {
   const user = await User.findById(userId);
   if (!user) throw new AppError('User not found', 404);
 
-  // 1. Revoke all FCM tokens (in-memory, before deletion)
-  if (user.fcmTokens && user.fcmTokens.length > 0) {
-    user.fcmTokens = [];
-    await user.save();
-  }
+  // Capture publicIds before the DB doc is deleted so we can reap them after.
+  const photoIds = (user.photos || []).map((p) => p.publicId);
+  const selfieId = user.selfiePhoto?.publicId;
 
-  // 2. Delete all photos from Cloudinary (profile + selfie)
-  const imageDeleteJobs = [];
+  await withTransaction(async (session) => {
+    const opts = sessionOpt(session);
 
-  if (user.photos && user.photos.length > 0) {
-    user.photos.forEach((photo) => {
-      imageDeleteJobs.push(
-        deleteImage(photo.publicId).catch((err) => {
-          logger.warn({ publicId: photo.publicId, err: err.message }, 'Failed to delete photo during account deletion');
-        }),
-      );
-    });
-  }
+    // Find matches inside the transaction so child message deletes see them.
+    const matches = await Match.find({ users: userId }, { _id: 1 }, opts);
+    const matchIds = matches.map((m) => m._id);
 
-  if (user.selfiePhoto?.publicId) {
-    imageDeleteJobs.push(
-      deleteImage(user.selfiePhoto.publicId).catch((err) => {
-        logger.warn({ publicId: user.selfiePhoto.publicId, err: err.message }, 'Failed to delete selfie during account deletion');
-      }),
+    if (matchIds.length > 0) {
+      await Message.deleteMany({ matchId: { $in: matchIds } }, opts);
+    }
+    await Match.deleteMany({ users: userId }, opts);
+    await Like.deleteMany(
+      { $or: [{ fromUser: userId }, { toUser: userId }] },
+      opts,
     );
+    await Block.deleteMany(
+      { $or: [{ blocker: userId }, { blocked: userId }] },
+      opts,
+    );
+    await Report.deleteMany({ reporter: userId }, opts);
+
+    // User doc last so the cascades all see a valid owner.
+    await User.deleteOne({ _id: userId }, opts);
+  });
+
+  // Disconnect any open sockets for this user. Done AFTER the DB cascades and
+  // BEFORE returning so the next request from the device can't sneak in. We
+  // call disconnect(true) without awaiting — sockets tear down on next tick.
+  if (io) {
+    try {
+      const sockets = await io.in(String(userId)).fetchSockets();
+      sockets.forEach((s) => s.disconnect(true));
+    } catch (err) {
+      logger.warn({ err: err.message, userId }, 'Failed to disconnect user sockets');
+    }
   }
 
-  await Promise.all(imageDeleteJobs);
+  // Best-effort Cloudinary cleanup AFTER mongo is consistent.
+  await Promise.all(
+    [...photoIds, selfieId]
+      .filter(Boolean)
+      .map((publicId) => deleteImage(publicId).catch((err) => {
+        logger.warn({ publicId, err: err.message }, 'Failed to delete image during account deletion');
+      })),
+  );
 
-  // 3. Find all matches to be able to delete their messages
-  const matches = await Match.find({ users: userId }).select('_id');
-  const matchIds = matches.map((m) => m._id);
-
-  // 4. Delete all associated data in parallel
+  // Best-effort cache invalidation.
   await Promise.all([
-    matchIds.length > 0
-      ? Message.deleteMany({ matchId: { $in: matchIds } })
-      : Promise.resolve(),
-    Match.deleteMany({ users: userId }),
-    Like.deleteMany({ $or: [{ fromUser: userId }, { toUser: userId }] }),
-    Block.deleteMany({ $or: [{ blocker: userId }, { blocked: userId }] }),
-    Report.deleteMany({ reporter: userId }),
     cacheDelPattern(`feed:${userId}:*`),
-    cacheDelPattern(`exclude:${userId}`),
+    cacheDelPattern(`exclude:${userId}*`),
+    cacheDelPattern(`ideal:${userId}:*`),
   ]);
-
-  // 5. Delete user document last
-  await User.findByIdAndDelete(userId);
 
   logger.info({ userId }, 'Account deleted');
 

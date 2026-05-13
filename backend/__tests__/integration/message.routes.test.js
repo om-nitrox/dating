@@ -89,7 +89,7 @@ describe('GET /api/v1/messages/:matchId', () => {
     expect(res.status).toBe(200);
     expect(res.body.messages).toHaveLength(2);
     expect(res.body.messages[0].text).toBe('First');
-    expect(res.body.nextCursor).toBeNull();
+    expect(res.body.hasMore).toBe(false);
   });
 
   it('returns 403 for non-participant', async () => {
@@ -122,5 +122,39 @@ describe('PUT /api/v1/messages/:matchId/seen', () => {
     const updated = await Message.findById(msg._id);
     expect(updated.seen).toBe(true);
     expect(updated.seenAt).toBeDefined();
+  });
+
+  it('returns 403 for a user who is not a participant of the match (fix 9)', async () => {
+    await Message.create({
+      matchId: match._id,
+      sender: user2._id,
+      text: 'private',
+      seen: false,
+    });
+
+    // Third user — NOT in the match.users array.
+    const outsider = await User.create({
+      email: 'outsider@test.com',
+      dob: new Date('1995-01-01'),
+    });
+    const outsiderToken = signAccessToken(outsider._id, outsider.gender);
+
+    const res = await request(app)
+      .put(`/api/v1/messages/${match._id}/seen`)
+      .set('Authorization', `Bearer ${outsiderToken}`);
+
+    expect(res.status).toBe(403);
+
+    // Confirm the message was NOT mutated by the unauthorized request.
+    const messages = await Message.find({ matchId: match._id });
+    expect(messages.every((m) => m.seen === false)).toBe(true);
+  });
+
+  it('returns 404 for a non-existent match', async () => {
+    const res = await request(app)
+      .put('/api/v1/messages/507f1f77bcf86cd799439011/seen')
+      .set('Authorization', `Bearer ${token1}`);
+
+    expect(res.status).toBe(404);
   });
 });

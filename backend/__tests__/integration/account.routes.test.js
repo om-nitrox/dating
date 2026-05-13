@@ -60,7 +60,8 @@ describe('DELETE /api/v1/account', () => {
       .send({ confirmation: 'DELETE_MY_ACCOUNT' });
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toMatch(/deleted/i);
+    // Spec §9: response is empty object.
+    expect(res.body).toEqual({});
 
     expect(await User.findById(user._id)).toBeNull();
     expect(await Match.findById(match._id)).toBeNull();

@@ -8,11 +8,19 @@ const signAccessToken = (userId, gender) => jwt.sign(
   { expiresIn: config.jwtAccessExpiry },
 );
 
-const signRefreshToken = (userId) => jwt.sign(
-  { id: userId },
-  config.jwtRefreshSecret,
-  { expiresIn: config.jwtRefreshExpiry },
-);
+/**
+ * Refresh tokens carry their own jti so we can identify which session-row
+ * to update on rotation. The caller stores the jti + HMAC of the token in
+ * User.refreshSessions[].
+ */
+const signRefreshToken = (userId, jti = crypto.randomUUID()) => {
+  const token = jwt.sign(
+    { id: userId, jti },
+    config.jwtRefreshSecret,
+    { expiresIn: config.jwtRefreshExpiry },
+  );
+  return { token, jti };
+};
 
 const verifyAccessToken = (token) => jwt.verify(token, config.jwtAccessSecret);
 

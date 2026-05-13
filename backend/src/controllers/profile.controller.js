@@ -17,11 +17,15 @@ const uploadPhotos = catchAsync(async (req, res) => {
 });
 
 const deletePhoto = catchAsync(async (req, res) => {
-  const photos = await profileService.deletePhoto(
-    req.user.id,
-    req.params.publicId,
-  );
-  res.status(200).json({ photos });
+  // Cloudinary publicIds contain slashes (e.g. "reverse-match/users/u123/abc").
+  // Express 5 path-to-regexp v8 wildcards produce an array of segments — join
+  // them back. Older URL-encoded callers (no slashes in raw path) show up as a
+  // string, so handle both shapes.
+  const raw = req.params.publicId;
+  const publicId = Array.isArray(raw) ? raw.join('/') : raw;
+  await profileService.deletePhoto(req.user.id, publicId);
+  // Spec §2: response is empty object.
+  res.status(200).json({});
 });
 
 const reorderPhotos = catchAsync(async (req, res) => {

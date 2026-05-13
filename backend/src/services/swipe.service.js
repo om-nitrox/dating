@@ -4,7 +4,9 @@ const Like = require('../models/Like');
 const Block = require('../models/Block');
 const AppError = require('../utils/AppError');
 const { sendPush } = require('./notification.service');
-const { cacheGet, cacheSet, cacheDel } = require('../utils/cache');
+const {
+  cacheGet, cacheSet, getCacheVersion, bumpCacheVersion,
+} = require('../utils/cache');
 
 const BOOST_SCORES = {
   gold: 1000,
@@ -30,19 +32,34 @@ const getEffectiveBoost = (user) => {
 const FEED_CACHE_TTL = 120; // 2 minutes
 const EXCLUDE_IDS_CACHE_TTL = 300; // 5 minutes — excluded IDs change less frequently
 
-const getFeed = async (userId, cursor, limit = 20) => {
-  // Try cache first (only for first page with no cursor)
-  if (!cursor) {
-    const cacheKey = `feed:${userId}:${limit}`;
+const getFeed = async (userId, cursor, limit = 20, filters = {}) => {
+  // Try cache first (only for first page with no cursor and default filters).
+  // Any user-supplied filter bypasses the cache so the response isn't
+  // accidentally pinned to a previous request's filter set.
+  const hasFilters = filters
+    && (filters.minAge !== undefined
+      || filters.maxAge !== undefined
+      || filters.maxDistanceKm !== undefined
+      || filters.intent);
+
+  // Versioned cache key — bumped on like/skip/profile location change. This
+  // means we never need pattern-deletes for feed/exclude (which previously
+  // raced and missed concurrent writers); a bump just makes the next read
+  // miss and recompute.
+  const feedVer = await getCacheVersion('feed', userId);
+  const excludeVer = await getCacheVersion('exclude', userId);
+
+  if (!cursor && !hasFilters) {
+    const cacheKey = `feed:${userId}:${feedVer}:${limit}`;
     const cached = await cacheGet(cacheKey);
     if (cached) return cached;
   }
 
-  const girl = await User.findById(userId).select('location preferences').lean();
+  const girl = await User.findById(userId).select('location preferences gender').lean();
   if (!girl) throw new AppError('User not found', 404);
 
   // Cache excluded IDs separately (5 min TTL) — saves 2 queries per feed request
-  const excludeCacheKey = `exclude:${userId}`;
+  const excludeCacheKey = `exclude:${userId}:${excludeVer}`;
   let excludeIds;
   const cachedExclude = await cacheGet(excludeCacheKey);
 
@@ -68,44 +85,62 @@ const getFeed = async (userId, cursor, limit = 20) => {
     excludeIds = excludeStringIds.map((id) => new mongoose.Types.ObjectId(id));
   }
 
-  const { ageMin, ageMax, maxDistance } = girl.preferences;
+  const { ageMin, ageMax, maxDistance } = girl.preferences || {};
+
+  // Resolve filters — request query params override the saved preferences,
+  // per BACKEND_API.md §3.
+  const effMinAge = filters.minAge ?? ageMin ?? 18;
+  const effMaxAge = filters.maxAge ?? ageMax ?? 99;
+  const effMaxKm = filters.maxDistanceKm ?? maxDistance ?? 50;
+
+  // Resolve target gender set from preferences.genderPreference.
+  // 'men' → ['male'], 'women' → ['female'], 'everyone' → all.
+  // Spec §3: "opposite gender (or per `preferences.genderPreference`)".
+  let targetGenders;
+  const genderPref = girl.preferences?.genderPreference;
+  if (genderPref === 'men') targetGenders = ['male'];
+  else if (genderPref === 'women') targetGenders = ['female'];
+  else if (genderPref === 'everyone') targetGenders = ['male', 'female', 'nonbinary'];
+  else if (girl.gender === 'female') targetGenders = ['male']; // default: opposite
+  else if (girl.gender === 'male') targetGenders = ['female'];
+  else targetGenders = ['male', 'female', 'nonbinary'];
+
+  const baseMatch = {
+    _id: { $nin: excludeIds },
+    gender: { $in: targetGenders },
+    isActive: true,
+    isProfileComplete: true,
+    age: { $gte: effMinAge, $lte: effMaxAge },
+  };
+
+  if (filters.intent) {
+    baseMatch.datingIntentions = filters.intent;
+  }
 
   const pipeline = [];
 
-  // Geo filter if girl has location
-  if (
-    girl.location?.coordinates
-    && girl.location.coordinates[0] !== 0
-    && girl.location.coordinates[1] !== 0
-  ) {
+  // Geo filter if girl has a real location. We treat missing coordinates AND
+  // legacy [0,0] sentinels (from before fix 30 changed the default) as "no
+  // location set" so we don't $geoNear against the Gulf of Guinea.
+  const girlCoords = girl.location?.coordinates;
+  const hasGirlLocation = Array.isArray(girlCoords)
+    && girlCoords.length === 2
+    && !(girlCoords[0] === 0 && girlCoords[1] === 0);
+  if (hasGirlLocation) {
     pipeline.push({
       $geoNear: {
         near: {
           type: 'Point',
-          coordinates: girl.location.coordinates,
+          coordinates: girlCoords,
         },
         distanceField: 'distance',
-        maxDistance: (maxDistance || 50) * 1000,
+        maxDistance: effMaxKm * 1000,
         spherical: true,
-        query: {
-          _id: { $nin: excludeIds },
-          gender: 'male',
-          isActive: true,
-          isProfileComplete: true,
-          age: { $gte: ageMin || 18, $lte: ageMax || 50 },
-        },
+        query: baseMatch,
       },
     });
   } else {
-    pipeline.push({
-      $match: {
-        _id: { $nin: excludeIds },
-        gender: 'male',
-        isActive: true,
-        isProfileComplete: true,
-        age: { $gte: ageMin || 18, $lte: ageMax || 50 },
-      },
-    });
+    pipeline.push({ $match: baseMatch });
   }
 
   // Add boost score for ranking
@@ -159,19 +194,27 @@ const getFeed = async (userId, cursor, limit = 20) => {
     });
   }
 
-  // Sort by boost priority, then daysWithoutMatch, then newest
-  pipeline.push({ $sort: { boostScore: -1, daysWithoutMatch: -1, _id: -1 } });
+  // Sort by _id DESC only so cursor-based pagination is well-defined.
+  // Boost still influences the feed: we keep `effectiveBoost`/`boostScore`
+  // on each profile so the client (and future server-side reranker) can
+  // surface boosted candidates. Earlier code sorted by boostScore first,
+  // which silently broke `{_id: $lt: cursor}` pagination because the cursor
+  // is monotonic in _id but not in boostScore. See fix 16 in the readiness
+  // review.
+  pipeline.push({ $sort: { _id: -1 } });
   pipeline.push({ $limit: limit });
 
-  // Project only needed fields.
-  // Private fields (refreshToken, selfiePhoto, email, fcmToken, dob) are never
-  // projected to viewers — only the card-relevant subset is returned.
+  // Project the full UserModel-compatible subset.
+  // Private fields (refreshToken, selfiePhoto, email, fcmTokens, dob) are
+  // never projected to viewers — only public profile fields go on the cards.
   pipeline.push({
     $project: {
+      _id: 1,
       name: 1,
       age: 1,
       gender: 1,
       pronouns: 1,
+      orientation: 1,
       bio: 1,
       interests: 1,
       photos: 1,
@@ -191,6 +234,8 @@ const getFeed = async (userId, cursor, limit = 20) => {
       familyPlans: 1,
       vices: 1,
       isVerified: 1,
+      boostLevel: 1,
+      daysWithoutMatch: 1,
       location: { city: 1, state: 1 },
       effectiveBoost: 1,
       distance: 1,
@@ -205,9 +250,9 @@ const getFeed = async (userId, cursor, limit = 20) => {
 
   const result = { profiles, nextCursor };
 
-  // Cache first page results
-  if (!cursor) {
-    const cacheKey = `feed:${userId}:${limit}`;
+  // Cache first page results (only when no user-supplied filters).
+  if (!cursor && !hasFilters) {
+    const cacheKey = `feed:${userId}:${feedVer}:${limit}`;
     await cacheSet(cacheKey, result, FEED_CACHE_TTL);
   }
 
@@ -220,8 +265,13 @@ const like = async (fromUserId, toUserId) => {
   }
 
   const toUser = await User.findById(toUserId);
-  if (!toUser || toUser.gender !== 'male') {
+  if (!toUser) {
     throw new AppError('User not found', 404);
+  }
+  if (toUser.gender !== 'male') {
+    // Recipient exists but cannot be liked in the reverse-match flow.
+    // 400 NOT_LIKEABLE distinguishes this from a genuine 404.
+    throw new AppError('User cannot be liked', 400, 'NOT_LIKEABLE');
   }
 
   try {
@@ -237,10 +287,10 @@ const like = async (fromUserId, toUserId) => {
     throw err;
   }
 
-  // Invalidate caches
+  // Bump versioned caches — any past key is now stale and will miss on read.
   await Promise.all([
-    cacheDel(`feed:${fromUserId}:20`),
-    cacheDel(`exclude:${fromUserId}`),
+    bumpCacheVersion('feed', fromUserId),
+    bumpCacheVersion('exclude', fromUserId),
   ]);
 
   // Push notification to the boy
@@ -269,10 +319,10 @@ const skip = async (fromUserId, toUserId) => {
     throw err;
   }
 
-  // Invalidate caches
+  // Bump versioned caches.
   await Promise.all([
-    cacheDel(`feed:${fromUserId}:20`),
-    cacheDel(`exclude:${fromUserId}`),
+    bumpCacheVersion('feed', fromUserId),
+    bumpCacheVersion('exclude', fromUserId),
   ]);
 
   return { message: 'Skipped' };
@@ -300,10 +350,10 @@ const undoLastSkip = async (userId) => {
 
   await Like.findByIdAndDelete(lastSkip._id);
 
-  // Invalidate caches so the profile reappears
+  // Bump versioned caches so the un-skipped profile reappears in the feed.
   await Promise.all([
-    cacheDel(`feed:${userId}:20`),
-    cacheDel(`exclude:${userId}`),
+    bumpCacheVersion('feed', userId),
+    bumpCacheVersion('exclude', userId),
   ]);
 
   return { message: 'Skip undone', undoneUserId: lastSkip.toUser.toString() };

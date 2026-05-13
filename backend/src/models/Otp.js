@@ -6,7 +6,9 @@ const otpSchema = new mongoose.Schema({
     required: true,
     lowercase: true,
   },
-  code: {
+  // HMAC-SHA256 of the OTP keyed with OTP_PEPPER (or JWT_ACCESS_SECRET).
+  // Plaintext codes MUST NOT be stored.
+  codeHash: {
     type: String,
     required: true,
   },

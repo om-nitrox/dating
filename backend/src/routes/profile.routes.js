@@ -11,7 +11,9 @@ router.get('/', profileController.getProfile);
 router.put('/', validate(updateProfileSchema), profileController.updateProfile);
 router.post('/photos', mutationLimiter, upload.array('photos', 6), profileController.uploadPhotos);
 router.put('/photos/reorder', mutationLimiter, validate(reorderPhotosSchema), profileController.reorderPhotos);
-router.delete('/photos/:publicId', mutationLimiter, profileController.deletePhoto);
+// publicId from Cloudinary contains slashes (e.g. "reverse-match/users/u123/abc").
+// Express 5 uses path-to-regexp v8 — `*publicId` is the wildcard capture token.
+router.delete('/photos/*publicId', mutationLimiter, profileController.deletePhoto);
 router.post('/selfie', mutationLimiter, upload.single('selfie'), profileController.uploadSelfie);
 router.post('/fcm-token', mutationLimiter, profileController.registerFcmToken);
 

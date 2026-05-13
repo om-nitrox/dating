@@ -2,7 +2,7 @@ const adminService = require('../services/admin.service');
 const catchAsync = require('../utils/catchAsync');
 
 const listReports = catchAsync(async (req, res) => {
-  const { status = 'pending', cursor, limit } = req.query;
+  const { status = 'pending', cursor, limit } = req.cleanQuery;
   const result = await adminService.listReports(status, cursor, parseInt(limit, 10) || 20);
   res.status(200).json(result);
 });

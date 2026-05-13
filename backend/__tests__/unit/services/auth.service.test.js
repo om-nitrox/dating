@@ -22,7 +22,7 @@ jest.mock('../../../src/config', () => ({
 
 const User = require('../../../src/models/User');
 const Otp = require('../../../src/models/Otp');
-const { generateOtp, sendOtpEmail } = require('../../../src/utils/otp');
+const { generateOtp, sendOtpEmail, hashOtp } = require('../../../src/utils/otp');
 const { signAccessToken, signRefreshToken, hashRefreshToken, verifyRefreshToken } = require('../../../src/utils/token');
 const authService = require('../../../src/services/auth.service');
 
@@ -41,9 +41,23 @@ beforeEach(() => {
   jest.clearAllMocks();
   generateOtp.mockReturnValue('123456');
   sendOtpEmail.mockResolvedValue(undefined);
+  // hashOtp is deterministic in production. We stub it to return a known
+  // sentinel so we can assert against it in both sendOtp and verifyOtp.
+  hashOtp.mockImplementation((code) => `hash:${code}`);
   signAccessToken.mockReturnValue('access-token');
-  signRefreshToken.mockReturnValue('refresh-token');
+  // signRefreshToken returns { token, jti } in the new multi-session model.
+  signRefreshToken.mockReturnValue({ token: 'refresh-token', jti: 'jti-1' });
   hashRefreshToken.mockReturnValue('hashed-token');
+  // issueTokens calls verifyRefreshToken to derive expiresAt. Default to a
+  // valid claim with an exp 7 days out unless a test overrides it.
+  verifyRefreshToken.mockReturnValue({
+    id: 'user123',
+    jti: 'jti-1',
+    exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+  });
+  // issueTokens persists the new session and reloads the user.
+  User.updateOne = jest.fn().mockResolvedValue({});
+  User.findById = jest.fn().mockResolvedValue({ ...mockUser });
 });
 
 describe('sendOtp', () => {
@@ -55,7 +69,7 @@ describe('sendOtp', () => {
 
     expect(Otp.deleteMany).toHaveBeenCalledWith({ email: 'test@example.com' });
     expect(Otp.create).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'test@example.com', code: '123456' })
+      expect.objectContaining({ email: 'test@example.com', codeHash: 'hash:123456' }),
     );
     expect(sendOtpEmail).toHaveBeenCalledWith('test@example.com', '123456');
     expect(result.message).toBe('OTP sent successfully');
@@ -138,23 +152,38 @@ describe('refreshTokens', () => {
     await expect(authService.refreshTokens('bad-token')).rejects.toThrow('Invalid refresh token');
   });
 
-  it('rejects token when atomic swap fails (hash mismatch or reuse)', async () => {
-    verifyRefreshToken.mockReturnValue({ id: 'user123' });
+  it('rejects token when no session matches (reuse / unknown jti)', async () => {
+    // First verifyRefreshToken call (in handler) returns the incoming claims.
+    verifyRefreshToken
+      .mockReturnValueOnce({ id: 'user123', jti: 'incoming-jti' })
+      // Second call computes the new token's expiry inside refreshTokens.
+      .mockReturnValueOnce({ id: 'user123', jti: 'jti-1', exp: Math.floor(Date.now() / 1000) + 60 });
     hashRefreshToken.mockReturnValue('old-hash');
-    signRefreshToken.mockReturnValue('new-refresh-token');
+    signRefreshToken.mockReturnValue({ token: 'new-refresh-token', jti: 'jti-1' });
+    // Neither the jti-match nor the legacy-fallback finds a session.
     User.findOneAndUpdate = jest.fn().mockResolvedValue(null);
-    User.findByIdAndUpdate = jest.fn().mockResolvedValue({});
+    User.updateOne = jest.fn().mockResolvedValue({});
 
     await expect(authService.refreshTokens('old-token')).rejects.toThrow('Invalid refresh token');
-    expect(User.findByIdAndUpdate).toHaveBeenCalledWith('user123', { refreshToken: null });
+    // Reuse for a known jti should revoke ONLY that session (pull, not wipe).
+    expect(User.updateOne).toHaveBeenCalledWith(
+      { _id: 'user123' },
+      { $pull: { refreshSessions: { jti: 'incoming-jti' } } },
+    );
   });
 
   it('rotates tokens on valid refresh', async () => {
-    verifyRefreshToken.mockReturnValue({ id: 'user123' });
+    verifyRefreshToken
+      .mockReturnValueOnce({ id: 'user123', jti: 'jti-old' })
+      .mockReturnValueOnce({ id: 'user123', jti: 'jti-1', exp: Math.floor(Date.now() / 1000) + 60 });
     hashRefreshToken.mockReturnValue('hashed');
-    signRefreshToken.mockReturnValue('new-refresh-token');
+    signRefreshToken.mockReturnValue({ token: 'new-refresh-token', jti: 'jti-1' });
     signAccessToken.mockReturnValue('new-access-token');
-    User.findOneAndUpdate = jest.fn().mockResolvedValue({ ...mockUser });
+    User.findOneAndUpdate = jest.fn().mockResolvedValue({
+      ...mockUser,
+      refreshSessions: [{ jti: 'jti-1', hash: 'hashed' }],
+    });
+    User.updateOne = jest.fn().mockResolvedValue({});
 
     const result = await authService.refreshTokens('valid-token');
 

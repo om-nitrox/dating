@@ -18,49 +18,78 @@ const mockMatch = {
   users: [new mongoose.Types.ObjectId(userId), new mongoose.Types.ObjectId(recipientId)],
 };
 
+// Helper — sendMessage/markSeen now call Match.findById(matchId).select('users').
+// Return a thenable so it works whether the service awaits the chain or the
+// .select() result directly.
+const mockFindByIdSelectingUsers = (match) => {
+  Match.findById = jest.fn().mockReturnValue({
+    select: jest.fn().mockResolvedValue(match),
+  });
+};
+
 beforeEach(() => jest.clearAllMocks());
 
 describe('sendMessage', () => {
-  it('creates a Message and returns it', async () => {
-    Match.findById = jest.fn().mockResolvedValue(mockMatch);
-    const mockMsg = { _id: 'msg1', matchId, sender: userId, text: 'Hello', seen: false };
+  it('creates a Message and returns { message, match }', async () => {
+    mockFindByIdSelectingUsers(mockMatch);
+    const mockMsg = {
+      _id: 'msg1', matchId, sender: userId, text: 'Hello', seen: false,
+    };
     Message.create = jest.fn().mockResolvedValue(mockMsg);
 
     const result = await sendMessage(matchId, userId, 'Hello');
 
     expect(Message.create).toHaveBeenCalledWith({ matchId, sender: userId, text: 'Hello' });
-    expect(result.text).toBe('Hello');
+    expect(result.message.text).toBe('Hello');
+    // Service returns the match doc too — fix 28 — so callers don't refetch.
+    expect(result.match).toBe(mockMatch);
   });
 
   it('throws 403 if sender is not a participant', async () => {
     const outsiderId = new mongoose.Types.ObjectId().toString();
-    Match.findById = jest.fn().mockResolvedValue(mockMatch);
+    mockFindByIdSelectingUsers(mockMatch);
 
     await expect(sendMessage(matchId, outsiderId, 'Hi')).rejects.toThrow('Unauthorized');
   });
 
   it('throws 404 if match does not exist', async () => {
-    Match.findById = jest.fn().mockResolvedValue(null);
+    mockFindByIdSelectingUsers(null);
 
     await expect(sendMessage(matchId, userId, 'Hi')).rejects.toThrow('Match not found');
   });
 });
 
 describe('markSeen', () => {
-  it('persists seen status to DB with seenAt timestamp', async () => {
+  it('persists seen status to DB with seenAt timestamp when caller is a participant', async () => {
+    mockFindByIdSelectingUsers(mockMatch);
     Message.updateMany = jest.fn().mockResolvedValue({ modifiedCount: 2 });
 
     await markSeen(matchId, userId);
 
     expect(Message.updateMany).toHaveBeenCalledWith(
       { matchId, sender: { $ne: userId }, seen: false },
-      { seen: true, seenAt: expect.any(Date) }
+      { seen: true, seenAt: expect.any(Date) },
     );
+  });
+
+  it('throws 403 when caller is not a participant (fix 9)', async () => {
+    mockFindByIdSelectingUsers(mockMatch);
+    const outsiderId = new mongoose.Types.ObjectId().toString();
+    Message.updateMany = jest.fn();
+
+    await expect(markSeen(matchId, outsiderId)).rejects.toThrow('Unauthorized');
+    expect(Message.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('throws 404 when the match does not exist', async () => {
+    mockFindByIdSelectingUsers(null);
+
+    await expect(markSeen(matchId, userId)).rejects.toThrow('Match not found');
   });
 });
 
 describe('getMessages', () => {
-  it('returns messages in chronological order with cursor pagination', async () => {
+  it('returns messages in chronological order (page-based)', async () => {
     Match.findById = jest.fn().mockResolvedValue(mockMatch);
     const msgs = [
       { _id: new mongoose.Types.ObjectId(), text: 'older', createdAt: new Date() },
@@ -68,11 +97,12 @@ describe('getMessages', () => {
     ];
     Message.find = jest.fn().mockReturnValue({
       sort: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
       limit: jest.fn().mockReturnThis(),
       select: jest.fn().mockResolvedValue(msgs),
     });
 
-    const result = await getMessages(matchId, userId, null, 30);
+    const result = await getMessages(matchId, userId, 1, 50);
 
     expect(result.messages).toHaveLength(2);
     expect(result.hasMore).toBe(false);

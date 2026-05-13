@@ -1,5 +1,8 @@
 jest.mock('../../../src/models/Match');
 jest.mock('../../../src/models/Message');
+// Match.deleteMatch now wraps cascading deletes in a transaction. Stub the
+// helper so the unit test runs sequentially without spinning up a session.
+jest.mock('../../../src/utils/withTransaction', () => async (work) => work(null));
 
 const mongoose = require('mongoose');
 const Match = require('../../../src/models/Match');
@@ -22,17 +25,16 @@ describe('getMatches', () => {
     expect(result.matches).toEqual(fakeMatches);
   });
 
-  it('returns nextCursor when more results exist', async () => {
-    const fakeMatches = Array.from({ length: 21 }, (_, i) => ({
+  it('returns hasMore when more results exist (page-based)', async () => {
+    const fakeMatches = Array.from({ length: 21 }, () => ({
       _id: new mongoose.Types.ObjectId(),
       users: [userId],
     }));
     Match.aggregate = jest.fn().mockResolvedValue(fakeMatches);
 
-    const result = await getMatches(userId, null, 20);
+    const result = await getMatches(userId, 1, 20);
 
     expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBeTruthy();
     expect(result.matches).toHaveLength(20);
   });
 });
@@ -61,12 +63,14 @@ describe('deleteMatch', () => {
       users: [userObjectId],
     });
     Message.deleteMany = jest.fn().mockResolvedValue({});
-    Match.findByIdAndDelete = jest.fn().mockResolvedValue({});
+    Match.deleteOne = jest.fn().mockResolvedValue({});
 
     const result = await deleteMatch(matchId, userId);
 
-    expect(Message.deleteMany).toHaveBeenCalledWith({ matchId });
-    expect(Match.findByIdAndDelete).toHaveBeenCalledWith(matchId);
-    expect(result.message).toBe('Unmatched successfully');
+    expect(Message.deleteMany).toHaveBeenCalledWith({ matchId }, {});
+    expect(Match.deleteOne).toHaveBeenCalledWith({ _id: matchId }, {});
+    // New API returns the deleted match wrapped in an object — controllers
+    // strip this and respond with `{}` per spec §5.
+    expect(result.match).toBeDefined();
   });
 });

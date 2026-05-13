@@ -55,6 +55,11 @@ const RELATIONSHIP_TYPE_VALUES = [
   'open_to_exploring',
   'prefer_not_to_say',
 ];
+const EXERCISE_VALUES = ['active', 'sometimes', 'never', 'prefer_not_to_say'];
+const ZODIAC_VALUES = [
+  'aries', 'taurus', 'gemini', 'cancer', 'leo', 'virgo',
+  'libra', 'scorpio', 'sagittarius', 'capricorn', 'aquarius', 'pisces',
+];
 
 const userSchema = new mongoose.Schema(
   {
@@ -101,6 +106,14 @@ const userSchema = new mongoose.Schema(
     bio: {
       type: String,
       maxlength: 300,
+    },
+    exercise: {
+      type: String,
+      enum: EXERCISE_VALUES,
+    },
+    zodiac: {
+      type: String,
+      enum: ZODIAC_VALUES,
     },
     interests: [{ type: String, trim: true }],
     photos: [mediaAssetSchema],
@@ -160,15 +173,19 @@ const userSchema = new mongoose.Schema(
     },
 
     // -------- location --------
+    // Default `coordinates` is intentionally undefined — [0, 0] is a real
+    // place (Gulf of Guinea) and was poisoning $geoNear results.  We also
+    // leave `type` un-defaulted so a user with no location at all stores
+    // location={} (no GeoJSON object), avoiding 2dsphere index errors on
+    // insert (the index is sparse, see below).
     location: {
       type: {
         type: String,
         enum: ['Point'],
-        default: 'Point',
       },
       coordinates: {
         type: [Number],
-        default: [0, 0],
+        default: undefined,
       },
       city: String,
       state: String,
@@ -194,6 +211,13 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Selfie moderation pipeline state. `isVerified` is ONLY set to true after
+    // manual (or future automated) face-match review approves the selfie.
+    selfieReviewStatus: {
+      type: String,
+      enum: ['none', 'pending', 'approved', 'rejected'],
+      default: 'none',
+    },
 
     // -------- status --------
     daysWithoutMatch: {
@@ -216,8 +240,29 @@ const userSchema = new mongoose.Schema(
     },
 
     // -------- auth --------
+    // Legacy single-session refresh token hash. Kept for backward-compat:
+    // when an old client refreshes for the first time after the migration,
+    // we read this, then move them onto `refreshSessions` (multi-device).
     refreshToken: {
       type: String,
+    },
+    // Multi-device session list. Each entry tracks a refresh-token "family"
+    // for a single device. On rotation we update the entry in-place. On
+    // mismatch (suspected reuse) we revoke ONLY that entry, not all sessions.
+    refreshSessions: {
+      type: [
+        new mongoose.Schema(
+          {
+            jti: { type: String, required: true },
+            hash: { type: String, required: true },
+            deviceId: { type: String },
+            createdAt: { type: Date, default: Date.now },
+            expiresAt: { type: Date, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
     },
 
     // -------- moderation --------
@@ -247,8 +292,10 @@ const userSchema = new mongoose.Schema(
 );
 
 // -------- Indexes --------
-// Geo queries for feed
-userSchema.index({ location: '2dsphere' });
+// Geo queries for feed.  `sparse: true` so users without coordinates don't
+// hit a "Point must be an array" insert error (legacy default was [0,0]; we
+// stopped defaulting it in fix 30). Mongo skips docs missing the field.
+userSchema.index({ location: '2dsphere' }, { sparse: true });
 userSchema.index({ gender: 1, isActive: 1, isProfileComplete: 1 });
 
 // Boost / feed scoring
@@ -264,4 +311,6 @@ module.exports.enums = {
   FAMILY_PLANS_VALUES,
   DATING_INTENTIONS_VALUES,
   RELATIONSHIP_TYPE_VALUES,
+  EXERCISE_VALUES,
+  ZODIAC_VALUES,
 };

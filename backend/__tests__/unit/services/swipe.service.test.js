@@ -6,6 +6,9 @@ jest.mock('../../../src/utils/cache', () => ({
   cacheGet: jest.fn().mockResolvedValue(null),
   cacheSet: jest.fn().mockResolvedValue(undefined),
   cacheDel: jest.fn().mockResolvedValue(undefined),
+  cacheDelPattern: jest.fn().mockResolvedValue(undefined),
+  getCacheVersion: jest.fn().mockResolvedValue('v1'),
+  bumpCacheVersion: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mongoose = require('mongoose');

@@ -46,21 +46,19 @@ afterEach(async () => {
 });
 
 describe('GET /api/v1/matches', () => {
-  it('returns matches for the authenticated user with cursor pagination', async () => {
+  it('returns matches for the authenticated user (page-based)', async () => {
     const res = await request(app)
       .get('/api/v1/matches')
       .set('Authorization', `Bearer ${token1}`);
 
     expect(res.status).toBe(200);
     expect(res.body.matches).toHaveLength(1);
-    expect(res.body.nextCursor).toBeDefined();
     expect(res.body.hasMore).toBe(false);
   });
 
-  it('respects cursor parameter', async () => {
-    const cursor = match._id.toString();
+  it('respects pagination — page beyond available data returns empty', async () => {
     const res = await request(app)
-      .get(`/api/v1/matches?cursor=${cursor}`)
+      .get('/api/v1/matches?page=2&limit=20')
       .set('Authorization', `Bearer ${token1}`);
 
     expect(res.status).toBe(200);
@@ -69,13 +67,13 @@ describe('GET /api/v1/matches', () => {
 });
 
 describe('DELETE /api/v1/matches/:matchId', () => {
-  it('unmatch — deletes match', async () => {
+  it('unmatch — deletes match (returns {})', async () => {
     const res = await request(app)
       .delete(`/api/v1/matches/${match._id}`)
       .set('Authorization', `Bearer ${token1}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toMatch(/unmatched/i);
+    expect(res.body).toEqual({});
 
     const deleted = await Match.findById(match._id);
     expect(deleted).toBeNull();

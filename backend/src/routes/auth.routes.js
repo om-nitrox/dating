@@ -12,7 +12,10 @@ const {
 
 const router = Router();
 
-router.post('/signup', authLimiter, otpSendLimiter, validate(signupSchema), authController.signup);
+// Validate BEFORE the per-email otpSendLimiter so the limiter's keyGenerator
+// (which keys on req.body.email) sees a normalized/known email and bogus
+// payloads can't bypass it.
+router.post('/signup', authLimiter, validate(signupSchema), otpSendLimiter, authController.signup);
 router.post('/verify-otp', authLimiter, otpVerifyLimiter, validate(verifyOtpSchema), authController.verifyOtp);
 router.post('/google', authLimiter, validate(googleAuthSchema), authController.googleAuth);
 router.post('/refresh-token', validate(refreshTokenSchema), authController.refreshToken);

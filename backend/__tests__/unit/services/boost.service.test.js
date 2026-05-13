@@ -17,14 +17,15 @@ const userId = 'user123';
 beforeEach(() => jest.clearAllMocks());
 
 describe('activateBoost', () => {
-  it('calls findByIdAndUpdate with boost tier and expiry', async () => {
+  it('calls findByIdAndUpdate with boost tier and expiry (minutes-based)', async () => {
     User.findByIdAndUpdate = jest.fn().mockResolvedValue({});
 
-    await activateBoost(userId, 'gold', 7);
+    // New API takes durationMinutes. 7 days = 10080 min.
+    await activateBoost(userId, 'gold', 7 * 24 * 60);
 
     expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
       userId,
-      expect.objectContaining({ boostLevel: 'gold', boostExpiry: expect.any(Date) })
+      expect.objectContaining({ boostLevel: 'gold', boostExpiry: expect.any(Date) }),
     );
 
     // Expiry should be ~7 days from now
@@ -44,12 +45,14 @@ describe('getBoostStatus', () => {
       }),
     });
 
+    // Spec §7 BoostStatusModel: { active, tier, expiresAt }.
     const result = await getBoostStatus(userId);
-    expect(result.boostLevel).toBe('silver');
-    expect(result.isActive).toBe(true);
+    expect(result.active).toBe(true);
+    expect(result.tier).toBe('silver');
+    expect(result.expiresAt).toEqual(expect.any(String));
   });
 
-  it('returns none when boost is expired', async () => {
+  it('returns inactive when boost is expired', async () => {
     User.findById = jest.fn().mockReturnValue({
       select: jest.fn().mockResolvedValue({
         boostLevel: 'bronze',
@@ -58,11 +61,12 @@ describe('getBoostStatus', () => {
     });
 
     const result = await getBoostStatus(userId);
-    expect(result.boostLevel).toBe('none');
-    expect(result.isActive).toBe(false);
+    expect(result.active).toBe(false);
+    expect(result.tier).toBeNull();
+    expect(result.expiresAt).toBeNull();
   });
 
-  it('returns none when boostLevel is none', async () => {
+  it('returns inactive when boostLevel is none', async () => {
     User.findById = jest.fn().mockReturnValue({
       select: jest.fn().mockResolvedValue({
         boostLevel: 'none',
@@ -71,8 +75,9 @@ describe('getBoostStatus', () => {
     });
 
     const result = await getBoostStatus(userId);
-    expect(result.boostLevel).toBe('none');
-    expect(result.isActive).toBe(false);
+    expect(result.active).toBe(false);
+    expect(result.tier).toBeNull();
+    expect(result.expiresAt).toBeNull();
   });
 
   it('throws 404 if user not found', async () => {

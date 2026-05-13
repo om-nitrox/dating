@@ -2,34 +2,72 @@ const messageService = require('../services/message.service');
 const catchAsync = require('../utils/catchAsync');
 
 const getMessages = catchAsync(async (req, res) => {
-  const { cursor, limit } = req.query;
+  // Spec §6: page-based, defaults page=1, limit=50.
+  const page = parseInt(req.cleanQuery.page, 10) || 1;
+  const limit = parseInt(req.cleanQuery.limit, 10) || 50;
   const result = await messageService.getMessages(
     req.params.matchId,
     req.user.id,
-    cursor || null,
-    parseInt(limit, 10) || 30,
+    page,
+    limit,
   );
   res.status(200).json(result);
 });
 
 const sendMessage = catchAsync(async (req, res) => {
-  const message = await messageService.sendMessage(
+  // Service returns { message, match } so we don't have to refetch the
+  // Match doc to fan-out broadcast (fix 28).
+  const { message, match } = await messageService.sendMessage(
     req.body.matchId,
     req.user.id,
     req.body.text,
   );
 
+  // Spec §6 + §12: emit `new-message` to the match room with payload
+  // shape `{ matchId, message: MessageModel }`.
   const io = req.app.get('io');
   if (io) {
-    io.to(req.body.matchId).emit('new-message', message);
+    const payload = { matchId: req.body.matchId, message };
+    io.to(req.body.matchId).emit('new-message', payload);
+
+    // Also deliver to each participant's personal room so push-back-to-list
+    // and badge updates still happen even when the chat screen is closed.
+    if (match) {
+      match.users.forEach((u) => {
+        io.to(u.toString()).emit('new-message', payload);
+      });
+    }
   }
 
+  // Spec §6: response is the FLAT MessageModel (NOT wrapped in `{ message }`).
   res.status(200).json(message);
 });
 
 const markSeen = catchAsync(async (req, res) => {
-  await messageService.markSeen(req.params.matchId, req.user.id);
-  res.status(200).json({ message: 'Messages marked as seen' });
+  const seenAt = await messageService.markSeen(req.params.matchId, req.user.id);
+
+  // Spec §12: emit `messages-seen` with `{ matchId, seenAt }` to the other user.
+  // markSeen already verified participation. We do one targeted Match read
+  // here so we can route to the OTHER user's personal room.
+  const io = req.app.get('io');
+  if (io) {
+    // eslint-disable-next-line global-require
+    const Match = require('../models/Match');
+    const match = await Match.findById(req.params.matchId).select('users').lean();
+    if (match) {
+      const otherId = match.users.find(
+        (u) => u.toString() !== req.user.id.toString(),
+      );
+      if (otherId) {
+        io.to(otherId.toString()).emit('messages-seen', {
+          matchId: req.params.matchId,
+          seenAt: seenAt.toISOString(),
+        });
+      }
+    }
+  }
+
+  res.status(200).json({});
 });
 
 module.exports = { getMessages, sendMessage, markSeen };

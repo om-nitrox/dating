@@ -158,8 +158,13 @@ describe('Socket.IO chat events', () => {
   });
 
   it('send-message — other user in room receives new-message', (done) => {
-    client2.on('new-message', (msg) => {
-      expect(msg.text).toBe('Hello!');
+    let resolved = false;
+    client2.on('new-message', (payload) => {
+      if (resolved) return;
+      resolved = true;
+      // Spec §12: payload is `{ matchId, message }`.
+      expect(payload.matchId).toBe(match._id.toString());
+      expect(payload.message.text).toBe('Hello!');
       done();
     });
 
@@ -168,7 +173,10 @@ describe('Socket.IO chat events', () => {
 
   it('typing event — other user receives user-typing', (done) => {
     client2.on('user-typing', (data) => {
+      // Spec §12: { matchId, userId, isTyping: bool }.
       expect(data.userId).toBe(user1._id.toString());
+      expect(data.matchId).toBe(match._id.toString());
+      expect(data.isTyping).toBe(true);
       done();
     });
 
@@ -194,8 +202,14 @@ describe('Socket.IO chat events', () => {
   });
 
   it('mark-seen event — messages-seen emitted to other user', (done) => {
+    let resolved = false;
     client1.on('messages-seen', (data) => {
-      expect(data.userId).toBe(user2._id.toString());
+      if (resolved) return;
+      resolved = true;
+      // Spec §12: { matchId, seenAt: ISO-8601 }.
+      expect(data.matchId).toBe(match._id.toString());
+      expect(data.seenAt).toBeDefined();
+      expect(() => new Date(data.seenAt).toISOString()).not.toThrow();
       done();
     });
 

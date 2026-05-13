@@ -1,6 +1,14 @@
 /**
  * NoSQL injection prevention middleware.
- * Strips keys starting with '$' and containing '.' from req.body, req.query, req.params.
+ *
+ * Strips MongoDB operator keys (anything starting with `$`) from `req.body`,
+ * `req.query`, and `req.params`. In Express 5, `req.query` is a getter and
+ * cannot be reassigned — assignment is silently dropped. We therefore expose
+ * cleaned copies under `req.cleanQuery` / `req.cleanBody` / `req.cleanParams`,
+ * AND in-place clean `req.body` / `req.params` (which remain writable).
+ *
+ * Controllers/validators that read query params MUST read from
+ * `req.cleanQuery` (not `req.query`).
  */
 
 const sanitizeObject = (obj) => {
@@ -21,9 +29,15 @@ const sanitizeObject = (obj) => {
 };
 
 const sanitize = (req, res, next) => {
+  // req.body and req.params remain assignable in Express 5.
   if (req.body) req.body = sanitizeObject(req.body);
-  if (req.query) req.query = sanitizeObject(req.query);
   if (req.params) req.params = sanitizeObject(req.params);
+
+  // req.query is read-only in Express 5 — expose the cleaned copy separately.
+  req.cleanQuery = req.query ? sanitizeObject(req.query) : {};
+  req.cleanBody = req.body || {};
+  req.cleanParams = req.params || {};
+
   next();
 };
 

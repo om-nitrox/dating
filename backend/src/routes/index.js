@@ -12,6 +12,7 @@ const messageRoutes = require('./message.routes');
 const boostRoutes = require('./boost.routes');
 const safetyRoutes = require('./safety.routes');
 const accountRoutes = require('./account.routes');
+const idealMatchRoutes = require('./idealMatch.routes');
 const adminRoutes = require('./admin.routes');
 
 const router = Router();
@@ -28,7 +29,8 @@ router.use('/swipe', auth, requireGender('female'), swipeRoutes);
 router.use('/queue', auth, requireGender('male'), queueRoutes);
 router.use('/matches', auth, matchRoutes);
 router.use('/messages', auth, messageRoutes);
-router.use('/boost', auth, requireGender('male'), boostRoutes);
+router.use('/boost', auth, boostRoutes);
+router.use('/ideal-match', auth, idealMatchRoutes);
 router.use('/', auth, safetyRoutes);
 router.use('/', auth, accountRoutes);
 

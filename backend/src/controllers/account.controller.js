@@ -2,18 +2,12 @@ const accountService = require('../services/account.service');
 const catchAsync = require('../utils/catchAsync');
 
 const deleteAccount = catchAsync(async (req, res) => {
-  // Socket cleanup
+  // Pass `io` so the service can disconnect sockets AFTER the DB cascades
+  // commit (fix 14). disconnect(true) returns synchronously — see service.
   const io = req.app.get('io');
-  if (io) {
-    // Disconnect user's sockets
-    const sockets = await io.in(req.user.id).fetchSockets();
-    for (const s of sockets) {
-      s.disconnect(true);
-    }
-  }
-
-  await accountService.deleteAccount(req.user.id);
-  res.status(200).json({ message: 'Account deleted successfully' });
+  await accountService.deleteAccount(req.user.id, io);
+  // Spec §9: response is empty object.
+  res.status(200).json({});
 });
 
 module.exports = { deleteAccount };

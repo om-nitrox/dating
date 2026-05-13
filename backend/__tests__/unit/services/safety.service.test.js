@@ -1,12 +1,24 @@
 jest.mock('../../../src/models/Report');
 jest.mock('../../../src/models/Block');
 jest.mock('../../../src/models/Match');
+jest.mock('../../../src/models/Message');
 jest.mock('../../../src/models/Like');
+
+// Stub the transaction helper — service-level unit tests don't need a real
+// Mongo session; they just invoke the work fn with `session=null` so writes
+// run sequentially.
+jest.mock('../../../src/utils/withTransaction', () => async (work) => work(null));
+
+jest.mock('../../../src/config', () => ({
+  reportAutoSuspendThreshold: 1000, // effectively disabled for blockUser tests
+  nodeEnv: 'test',
+}));
 
 const mongoose = require('mongoose');
 const Report = require('../../../src/models/Report');
 const Block = require('../../../src/models/Block');
 const Match = require('../../../src/models/Match');
+const Message = require('../../../src/models/Message');
 const Like = require('../../../src/models/Like');
 const { reportUser, blockUser } = require('../../../src/services/safety.service');
 
@@ -18,11 +30,12 @@ beforeEach(() => jest.clearAllMocks());
 describe('reportUser', () => {
   it('creates a Report record', async () => {
     Report.create = jest.fn().mockResolvedValue({});
+    Report.countDocuments = jest.fn().mockResolvedValue(0);
 
     const result = await reportUser(reporterId, reportedId, 'spam', 'Spam content');
 
     expect(Report.create).toHaveBeenCalledWith(
-      expect.objectContaining({ reporter: reporterId, reported: reportedId, reason: 'spam' })
+      expect.objectContaining({ reporter: reporterId, reported: reportedId, reason: 'spam' }),
     );
     expect(result.message).toBe('Report submitted');
   });
@@ -33,9 +46,12 @@ describe('reportUser', () => {
 });
 
 describe('blockUser', () => {
-  it('creates Block record, removes matches and likes', async () => {
+  it('creates Block record, removes matches/messages and likes', async () => {
     Block.create = jest.fn().mockResolvedValue({});
+    // After the fix, Match.find is called with (filter, projection, opts).
+    Match.find = jest.fn().mockResolvedValue([]);
     Match.deleteMany = jest.fn().mockResolvedValue({});
+    Message.deleteMany = jest.fn().mockResolvedValue({});
     Like.deleteMany = jest.fn().mockResolvedValue({});
 
     const result = await blockUser(reporterId, reportedId);

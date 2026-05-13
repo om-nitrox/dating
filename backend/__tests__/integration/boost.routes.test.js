@@ -47,7 +47,11 @@ describe('POST /api/v1/boost/webhook — idempotency', () => {
       type: 'checkout.session.completed',
       data: {
         object: {
-          metadata: { userId: maleUser._id.toString(), tier: 'bronze', duration: '1' },
+          metadata: {
+            userId: maleUser._id.toString(),
+            tier: 'bronze',
+            durationMinutes: '30',
+          },
         },
       },
     };
@@ -74,7 +78,11 @@ describe('POST /api/v1/boost/webhook — idempotency', () => {
       type: 'checkout.session.completed',
       data: {
         object: {
-          metadata: { userId: maleUser._id.toString(), tier: 'gold', duration: '7' },
+          metadata: {
+            userId: maleUser._id.toString(),
+            tier: 'gold',
+            durationMinutes: '180',
+          },
         },
       },
     };

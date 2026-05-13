@@ -13,7 +13,19 @@ const logger = pino({
     res: pino.stdSerializers.res,
   },
   redact: {
-    paths: ['req.headers.authorization', 'req.body.password', 'req.body.refreshToken'],
+    paths: [
+      // Request — credentials & sensitive payloads
+      'req.headers.authorization',
+      'req.headers.cookie',
+      'req.body.password',
+      'req.body.refreshToken',
+      'req.body.code',
+      'req.body.otp',
+      'req.body.idToken',
+      // Response — never log freshly-issued tokens
+      'res.body.accessToken',
+      'res.body.refreshToken',
+    ],
     censor: '[REDACTED]',
   },
 });

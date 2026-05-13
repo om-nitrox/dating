@@ -1,9 +1,24 @@
 const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const { verifyAccessToken } = require('../utils/token');
+const { getRedis } = require('../config/redis');
+const User = require('../models/User');
 const chatHandler = require('./chat.handler');
 const config = require('../config');
 const logger = require('../utils/logger');
+
+/**
+ * Extract a bearer token from either:
+ *   1. `socket.handshake.auth.token` (Socket.IO client default)
+ *   2. `Authorization: Bearer <token>` header (spec §12 fallback)
+ */
+const extractToken = (socket) => {
+  const fromAuth = socket.handshake?.auth?.token;
+  if (fromAuth) return fromAuth;
+  const header = socket.handshake?.headers?.authorization;
+  if (header && header.startsWith('Bearer ')) return header.slice(7);
+  return null;
+};
 
 const initSocket = (httpServer, redisClient) => {
   const io = new Server(httpServer, {
@@ -33,20 +48,44 @@ const initSocket = (httpServer, redisClient) => {
   }
 
   // JWT authentication middleware
-  io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
+  io.use(async (socket, next) => {
+    const token = extractToken(socket);
 
     if (!token) {
       return next(new Error('Authentication required'));
     }
 
+    let decoded;
     try {
-      const decoded = verifyAccessToken(token);
-      socket.user = { id: decoded.id, gender: decoded.gender };
-      next();
+      decoded = verifyAccessToken(token);
     } catch {
-      next(new Error('Invalid token'));
+      return next(new Error('Invalid token'));
     }
+
+    // Mirror HTTP auth middleware: check blacklist + banned set in Redis
+    // before letting the socket join.  On Redis failure we fall back to a
+    // DB ban check so we don't fail open.
+    try {
+      const redis = getRedis();
+      if (decoded.jti) {
+        const blacklisted = await redis.get(`blacklist:${decoded.jti}`);
+        if (blacklisted) return next(new Error('Token has been revoked'));
+      }
+      const banned = await redis.get(`banned:${decoded.id}`);
+      if (banned) return next(new Error('Account suspended'));
+    } catch (_) {
+      // Redis unavailable — fall through to DB check.
+    }
+
+    try {
+      const u = await User.findById(decoded.id, { banned: 1 }).lean();
+      if (u && u.banned) return next(new Error('Account suspended'));
+    } catch (err) {
+      logger.warn({ err: err.message }, 'Socket ban-check DB failure');
+    }
+
+    socket.user = { id: decoded.id, gender: decoded.gender };
+    return next();
   });
 
   io.on('connection', (socket) => {

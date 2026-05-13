@@ -5,6 +5,15 @@ const logger = require('./logger');
 
 const generateOtp = () => crypto.randomInt(100000, 999999).toString();
 
+/**
+ * Hash an OTP code with HMAC-SHA256 using OTP_PEPPER (or JWT_ACCESS_SECRET as
+ * fallback) as the key. We never store the plaintext code in MongoDB.
+ */
+const hashOtp = (code) => {
+  const key = config.otpPepper || config.jwtAccessSecret;
+  return crypto.createHmac('sha256', key).update(String(code)).digest('hex');
+};
+
 let transporter = null;
 
 const getTransporter = () => {
@@ -25,7 +34,8 @@ const getTransporter = () => {
 
 const sendOtpEmail = async (email, code) => {
   if (!config.smtpUser || !config.smtpPass) {
-    logger.info(`[${config.nodeEnv}] OTP for ${email}: ${code}`);
+    // Never log the OTP code itself — log only that one was generated.
+    logger.info({ email }, 'OTP generated (SMTP not configured, mail not sent)');
     return;
   }
 
@@ -46,4 +56,4 @@ const sendOtpEmail = async (email, code) => {
   await getTransporter().sendMail(mailOptions);
 };
 
-module.exports = { generateOtp, sendOtpEmail };
+module.exports = { generateOtp, sendOtpEmail, hashOtp };

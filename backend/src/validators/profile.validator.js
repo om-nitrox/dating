@@ -19,6 +19,12 @@ const promptSchema = Joi.object({
   answer: Joi.string().trim().max(225).required(),
 });
 
+const EXERCISE_VALUES = ['active', 'sometimes', 'never', 'prefer_not_to_say'];
+const ZODIAC_VALUES = [
+  'aries', 'taurus', 'gemini', 'cancer', 'leo', 'virgo',
+  'libra', 'scorpio', 'sagittarius', 'capricorn', 'aquarius', 'pisces',
+];
+
 const updateProfileSchema = Joi.object({
   // identity
   name: Joi.string().trim().min(1).max(50),
@@ -33,6 +39,10 @@ const updateProfileSchema = Joi.object({
   bio: nullableString(300),
   interests: Joi.array().items(Joi.string().trim()).max(20),
   prompts: Joi.array().items(promptSchema).max(3),
+
+  // lifestyle
+  exercise: Joi.string().valid(...EXERCISE_VALUES),
+  zodiac: Joi.string().valid(...ZODIAC_VALUES),
 
   // vitals
   height: Joi.number().integer().min(120).max(250),

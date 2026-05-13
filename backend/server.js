@@ -11,10 +11,11 @@ const logger = require('./src/utils/logger');
 const server = http.createServer(app);
 
 const start = async () => {
-  // Connect to MongoDB
-  await connectDB();
-
-  // Connect to Redis (required for rate limiting, caching, socket adapter)
+  // Connect to Redis (required for rate limiting, caching, socket adapter).
+  // We attempt Redis first because Socket.IO benefits from the adapter being
+  // available when it boots, and so we can attach `io` to the app BEFORE
+  // MongoDB is up — handlers that depend on `req.app.get('io')` no longer
+  // race with the very first inbound request.
   let redisClient = null;
   try {
     redisClient = connectRedis();
@@ -28,14 +29,19 @@ const start = async () => {
     logger.warn({ err: err.message }, 'Redis not available — running without cache/socket-adapter (dev only)');
   }
 
-  // Initialize Socket.IO with Redis adapter
+  // Initialize Socket.IO BEFORE the DB connect so it is observable through
+  // app.get('io') for any handler that runs while DB is still connecting
+  // (fix 21).
   const io = initSocket(server, redisClient);
   app.set('io', io);
+
+  // Connect to MongoDB
+  await connectDB();
 
   // Initialize Firebase (optional, fails gracefully)
   initFirebase();
 
-  // Start cron jobs
+  // Start cron jobs (single-leader via Redis lock — see dailyBoost.job)
   initCronJobs();
 
   server.listen(config.port, () => {
@@ -84,11 +90,13 @@ const shutdown = async (signal) => {
     process.exit(0);
   });
 
-  // Force exit after 30 seconds (enough for 1500 connections to drain)
+  // Force exit after 30 seconds (enough for 1500 connections to drain).
+  // `.unref()` so the timer itself doesn't keep the event loop alive when
+  // graceful shutdown completes early (fix 31).
   setTimeout(() => {
     logger.error('Forced shutdown after timeout');
     process.exit(1);
-  }, 30000);
+  }, 30000).unref();
 };
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
@@ -100,6 +108,11 @@ process.on('uncaughtException', (err) => {
   shutdown('uncaughtException');
 });
 
+// Unhandled rejections: log everywhere. In production, fail fast so the
+// process manager (PM2/k8s) restarts on a clean slate (fix 31).
 process.on('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'Unhandled rejection');
+  if (config.nodeEnv === 'production') {
+    shutdown('unhandledRejection');
+  }
 });

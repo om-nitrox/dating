@@ -17,6 +17,12 @@ const likeSchema = new mongoose.Schema(
       enum: ['pending', 'accepted', 'rejected', 'skipped'],
       default: 'pending',
     },
+    // 'like' | 'super' — future-proof for super-likes (spec §4)
+    type: {
+      type: String,
+      enum: ['like', 'super'],
+      default: 'like',
+    },
   },
   {
     timestamps: true,

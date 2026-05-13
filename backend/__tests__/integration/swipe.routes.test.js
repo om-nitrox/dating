@@ -85,8 +85,9 @@ describe('POST /api/v1/swipe/like', () => {
       .set('Authorization', `Bearer ${femaleToken}`)
       .send({ userId: maleUser._id.toString() });
 
-    expect(res.status).toBe(201);
-    expect(res.body.message).toMatch(/like/i);
+    // Spec §3: 200 + {} response shape.
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({});
   });
 
   it('returns 404 for non-existent target user', async () => {
@@ -108,6 +109,6 @@ describe('POST /api/v1/swipe/skip', () => {
       .send({ userId: maleUser._id.toString() });
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toMatch(/skip/i);
+    expect(res.body).toEqual({});
   });
 });

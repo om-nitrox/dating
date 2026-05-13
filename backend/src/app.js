@@ -31,15 +31,30 @@ app.post(
 app.use(helmet());
 
 // CORS — locked to specific origins
-app.use(
-  cors({
-    origin: true, // Allow all origins (mobile app + web)
+// In production, only origins on the allow-list may use credentials.
+// In dev, allow any origin so Flutter (simulator/emulator/web) can connect.
+const corsOptions = config.nodeEnv === 'production'
+  ? {
+    origin: (origin, cb) => {
+      // Same-origin / non-browser requests (no Origin header) always pass.
+      // Browser requests must match the configured CORS_ORIGINS list.
+      if (!origin) return cb(null, true);
+      if (config.corsOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error('CORS: origin not allowed'));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    maxAge: 86400, // Preflight cache 24h
-  }),
-);
+    maxAge: 86400,
+  }
+  : {
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 86400,
+  };
+app.use(cors(corsOptions));
 
 app.use(compression());
 app.use(express.json({ limit: config.maxRequestBodySize }));
@@ -149,11 +164,15 @@ app.get('/api/v1/boost/cancel', (req, res) => {
   `);
 });
 
-// App config endpoint (privacy policy, terms URLs)
+// App config endpoint (legal URLs, support email, min app version).
+// Spec §10: no auth required. Mounted here (above /api/v1) so the routes
+// index doesn't accidentally guard it with the global auth middleware.
 app.get('/api/v1/config', (req, res) => {
   res.json({
-    privacyPolicyUrl: config.privacyPolicyUrl,
     termsOfServiceUrl: config.termsOfServiceUrl,
+    privacyPolicyUrl: config.privacyPolicyUrl,
+    supportEmail: config.supportEmail,
+    minAppVersion: config.minAppVersion,
   });
 });
 

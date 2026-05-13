@@ -68,6 +68,43 @@ const cacheDelPattern = async (pattern) => {
   }
 };
 
+/**
+ * Get the current cache version for a user. Bump-on-write means we never need
+ * to know every key that depends on this user — bumping the version causes a
+ * cache miss on the next read, which is fast and correct.
+ *
+ * Returns the version string (e.g., "v1"). When Redis is unavailable we fall
+ * back to a constant — callers MUST still invalidate the specific keys they
+ * own as well (see swipe.service / profile.service).
+ */
+const getCacheVersion = async (namespace, ownerId) => {
+  try {
+    const redis = getRedis();
+    if (redis.status !== 'ready') return 'v1';
+    const v = await redis.get(`ver:${namespace}:${ownerId}`);
+    return v || 'v1';
+  } catch {
+    return 'v1';
+  }
+};
+
+const bumpCacheVersion = async (namespace, ownerId) => {
+  try {
+    const redis = getRedis();
+    if (redis.status !== 'ready') return;
+    // INCR is atomic and creates the key with value 1 on first call. We
+    // prefix with 'v' on read so the value is a plain number internally.
+    await redis.incr(`ver:${namespace}:${ownerId}`);
+  } catch (err) {
+    logger.debug({ err: err.message, namespace, ownerId }, 'Cache version bump failed');
+  }
+};
+
 module.exports = {
-  cacheGet, cacheSet, cacheDel, cacheDelPattern,
+  cacheGet,
+  cacheSet,
+  cacheDel,
+  cacheDelPattern,
+  getCacheVersion,
+  bumpCacheVersion,
 };

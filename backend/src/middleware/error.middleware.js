@@ -44,7 +44,7 @@ const errorMiddleware = (err, req, res, _next) => {
 
   // Operational errors (our AppError instances)
   if (err.isOperational) {
-    code = 'APP_ERROR';
+    code = err.code || 'APP_ERROR';
   }
 
   // Log server errors with full details

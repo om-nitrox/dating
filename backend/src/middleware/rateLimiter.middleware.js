@@ -34,6 +34,17 @@ const authLimiter = rateLimit({
   keyGenerator: (req) => ipKeyGenerator(req),
 });
 
+// Email key normalizer for OTP limiters. Lowercases the email and falls back
+// to the request IP when the body is missing/invalid (defense-in-depth: even
+// if a request slips past validation, IP-based limiting still applies).
+const otpKey = (prefix) => (req) => {
+  const raw = req.body && typeof req.body.email === 'string' ? req.body.email : '';
+  const email = raw.trim().toLowerCase();
+  const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (looksLikeEmail) return `${prefix}:${email}`;
+  return `${prefix}:${ipKeyGenerator(req)}`;
+};
+
 const otpVerifyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -43,7 +54,7 @@ const otpVerifyLimiter = rateLimit({
   message: {
     error: { code: 'RATE_LIMIT', message: 'Too many OTP attempts, try again later' },
   },
-  keyGenerator: (req) => `otp:${req.body?.email || ipKeyGenerator(req)}`,
+  keyGenerator: otpKey('otp'),
 });
 
 const otpSendLimiter = rateLimit({
@@ -55,7 +66,7 @@ const otpSendLimiter = rateLimit({
   message: {
     error: { code: 'RATE_LIMIT', message: 'Too many OTP requests, try again later' },
   },
-  keyGenerator: (req) => `otp-send:${req.body?.email || ipKeyGenerator(req)}`,
+  keyGenerator: otpKey('otp-send'),
 });
 
 const likeLimiter = rateLimit({

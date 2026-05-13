@@ -54,7 +54,8 @@ const logout = catchAsync(async (req, res) => {
     deviceId ? removeFcmToken(req.user.id, deviceId) : Promise.resolve(),
   ]);
 
-  res.status(200).json({ message: 'Logged out' });
+  // Spec §1: response is empty object.
+  res.status(200).json({});
 });
 
 module.exports = {

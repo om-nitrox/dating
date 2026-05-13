@@ -3,6 +3,7 @@ const request = require('supertest');
 const { signAccessToken } = require('../../src/utils/token');
 const User = require('../../src/models/User');
 const Otp = require('../../src/models/Otp');
+const { hashOtp } = require('../../src/utils/otp');
 
 let app;
 
@@ -55,7 +56,7 @@ describe('POST /api/v1/auth/verify-otp', () => {
 
     await Otp.create({
       email: 'existing@test.com',
-      code: '123456',
+      codeHash: hashOtp('123456'),
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
@@ -71,7 +72,7 @@ describe('POST /api/v1/auth/verify-otp', () => {
   it('returns 400 on wrong OTP', async () => {
     await Otp.create({
       email: 'user@test.com',
-      code: '654321',
+      codeHash: hashOtp('654321'),
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
@@ -85,7 +86,7 @@ describe('POST /api/v1/auth/verify-otp', () => {
   it('creates new user without dateOfBirth (DOB collected during onboarding)', async () => {
     await Otp.create({
       email: 'newuser@test.com',
-      code: '123456',
+      codeHash: hashOtp('123456'),
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
@@ -101,7 +102,7 @@ describe('POST /api/v1/auth/verify-otp', () => {
   it('rejects underage new user', async () => {
     await Otp.create({
       email: 'young@test.com',
-      code: '123456',
+      codeHash: hashOtp('123456'),
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
@@ -146,7 +147,8 @@ describe('POST /api/v1/auth/logout', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toMatch(/logged out/i);
+    // Spec §1: response is empty object.
+    expect(res.body).toEqual({});
   });
 
   it('returns 401 without token', async () => {
