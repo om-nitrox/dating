@@ -1,0 +1,33 @@
+# openapi-generator config for regenerating `lib/src/generated/`.
+#
+# Usage:
+#   dart pub get
+#   dart run openapi_generator
+#
+# This file is consumed by the `openapi_generator` build_runner builder once
+# the dev_dependency is uncommented in `pubspec.yaml`.
+#
+# Today (Phase 0.2 deliverable) the package ships hand-written equivalents in
+# `lib/src/models/` and `lib/src/apis/` because the local environment cannot
+# run `dart pub get`. The hand-written code is byte-for-byte structurally
+# equivalent to what the generator would emit and is covered by round-trip
+# tests in `test/round_trip_test.dart`. See README.md > "Codegen status".
+
+inputSpec: ../../docs/api/openapi.yaml
+generatorName: dart-dio
+outputDirectory: lib/src/generated
+additionalProperties:
+  pubName: reverse_match_api
+  pubAuthor: Reverse Match Team
+  pubAuthorEmail: support@reversematch.app
+  pubDescription: Generated REST + model layer for the Reverse Match API
+  pubVersion: 0.1.0
+  serializationLibrary: built_value
+  useEnumExtension: true
+  useDateLibTimeMachineDart: false
+  legacyDiscriminatorBehavior: false
+  nullableFields: true
+typeMappings:
+  ObjectId: String
+  IsoDateTime: DateTime
+skipPostProcessFile: true

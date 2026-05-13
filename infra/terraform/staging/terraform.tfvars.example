@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars and fill in for your AWS account.
+# NEVER commit terraform.tfvars — it is in .gitignore.
+
+aws_region         = "us-east-1"
+vpc_cidr           = "10.20.0.0/16"
+atlas_peering_cidr = "192.168.248.0/21"  # placeholder — replace with the
+                                          # actual Atlas peer VPC CIDR after
+                                          # creating the Atlas project.

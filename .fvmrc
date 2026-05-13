@@ -1,0 +1,4 @@
+{
+  "flutter": "3.41.9",
+  "//": "Detected from vendored SDK at flutter/ (CHANGELOG.md top entry = 3.41.9, bundled Dart 3.11.5). Pinned for parity. Bump via `fvm install <version>` + commit this file."
+}

@@ -1,3 +1,7 @@
+// TODO(Phase-3.1): migrate these cron-driven jobs onto the BullMQ worker.
+// The Redis lock below currently provides single-leader semantics inside the
+// api cluster; once on BullMQ we'll use a repeatable job + a single worker
+// instance instead, and drop node-cron entirely from the api process.
 const cron = require('node-cron');
 const User = require('../models/User');
 const logger = require('../utils/logger');

@@ -1,0 +1,38 @@
+# Spectral linter config for the Reverse Match API contracts.
+#
+# Lints both `docs/api/openapi.yaml` and `docs/api/asyncapi.yaml`. Spectral auto-detects
+# OpenAPI vs AsyncAPI documents by their root key, so a single config works for both.
+#
+# We extend the bundled `spectral:oas` and `spectral:asyncapi` rulesets and override a
+# small set of rules to keep the spec lint clean without weakening the important ones.
+extends:
+  - spectral:oas
+  - spectral:asyncapi
+
+rules:
+  # The spec doc does not include marketing/license URLs and we don't want to ship
+  # `contact.url` until we have a public dev portal.
+  info-contact: warn
+  info-license: off
+  license-url: off
+  contact-properties: off
+
+  # `oas3-unused-component` flags components defined-but-not-yet-referenced. Useful as a
+  # *warning* — failing on it would force us to delete schemas we're about to use in 0.2/0.3.
+  oas3-unused-component: warn
+
+  # Operation tags are explicitly modeled — we don't need the default per-op description
+  # rule to fail builds. We already write descriptions on every non-trivial op.
+  operation-description: warn
+  operation-tag-defined: error
+  operation-operationId: error
+  operation-operationId-unique: error
+
+  # We use `examples` (plural) on schemas, which is OpenAPI 3.1 native. Disable the older
+  # 3.0 single-`example` linter that would otherwise fire false positives.
+  oas3-valid-media-example: warn
+  oas3-valid-schema-example: warn
+
+  # AsyncAPI specific tweaks — operationId is required, but we don't want the message
+  # `summary` rule to be a hard error on outbound-event payloads that are just a string.
+  asyncapi-operation-description: warn

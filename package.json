@@ -1,0 +1,30 @@
+{
+  "name": "reverse-match-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reverse Match monorepo root — hosts the backend service and the Flutter client. Owns workspace-level tooling (Prettier, Husky, lint-staged, Spectral).",
+  "workspaces": [
+    "backend"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "prepare": "husky install",
+    "format": "prettier --write \"**/*.{js,json,yaml,yml,md}\"",
+    "format:check": "prettier --check \"**/*.{js,json,yaml,yml,md}\"",
+    "lint:openapi": "spectral lint docs/api/openapi.yaml docs/api/asyncapi.yaml --ruleset .spectral.yaml"
+  },
+  "lint-staged": {
+    "*.{js,json,yaml,yml,md}": [
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "@stoplight/spectral-cli": "^6.11.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.10",
+    "prettier": "^3.3.3"
+  }
+}
+

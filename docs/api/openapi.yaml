@@ -1,0 +1,1861 @@
+openapi: 3.1.0
+info:
+  title: Reverse Match API
+  version: 1.0.0
+  summary: REST contract between the Reverse Match Flutter client and the Node/Express backend.
+  description: |
+    Single source of truth for the Reverse Match HTTP API. Mirrors the contract previously
+    documented in `BACKEND_API.md`. Socket.IO events live in the sibling `asyncapi.yaml`
+    document.
+
+    Conventions:
+      - Base path: `/api/v1`
+      - Auth: `Authorization: Bearer <accessToken>` on every route except `/auth/*` and `/config`.
+      - Pagination: cursor (`?cursor=`) for the swipe feed; page-based (`?page=&limit=`) for matches and messages.
+      - Errors: all non-2xx responses share the shape defined by `ErrorResponse`.
+      - IDs: MongoDB `_id` (24-char hex) serialized as a string. Both `id` and `_id` are accepted by the client; `_id` is preferred.
+      - Dates: ISO-8601 UTC strings (e.g. `2026-05-02T14:30:00.000Z`).
+      - Coordinates: GeoJSON order — `[longitude, latitude]`.
+  license:
+    name: Proprietary
+  contact:
+    name: Reverse Match Team
+    email: support@reversematch.app
+
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local development
+  - url: https://api.reversematch.app/api/v1
+    description: Production
+
+tags:
+  - name: auth
+    description: Email-OTP and Google authentication, token refresh, logout.
+  - name: profile
+    description: Authenticated user's profile fetch/update, photo management, selfie verification.
+  - name: swipe
+    description: Girls' swipe feed and like/skip/undo actions.
+  - name: queue
+    description: Boys' incoming likes queue with accept/reject actions.
+  - name: matches
+    description: Match list and unmatch.
+  - name: messages
+    description: Chat history, sending messages over HTTP, mark-seen.
+  - name: boost
+    description: Boost plans, current status, purchase flow.
+  - name: safety
+    description: Report and block actions.
+  - name: account
+    description: Permanent account deletion.
+  - name: config
+    description: Unauthenticated app-wide config (legal URLs, min app version, support email).
+  - name: ideal-match
+    description: Highest-similarity match computed over a feature vector with weighted cosine.
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ----------------------------------------------------------------------
+  # 1. Auth
+  # ----------------------------------------------------------------------
+  /auth/signup:
+    post:
+      tags: [auth]
+      summary: Request an email OTP
+      description: |
+        Sends a 6-digit OTP to the supplied email. Used for both signup and login —
+        email-OTP and Google are the only auth methods.
+      operationId: requestEmailOtp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequest'
+      responses:
+        '200':
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /auth/verify-otp:
+    post:
+      tags: [auth]
+      summary: Verify the OTP and exchange it for tokens
+      description: |
+        Verifies the 6-digit OTP. Creates a new user row if `email` is not yet in the
+        database. Returns access + refresh tokens and the full `UserModel`.
+      operationId: verifyEmailOtp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOtpRequest'
+      responses:
+        '200':
+          description: OTP verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '410':
+          description: OTP expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /auth/google:
+    post:
+      tags: [auth]
+      summary: Verify a Google ID token and log in or create a user
+      operationId: googleSignIn
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleSignInRequest'
+      responses:
+        '200':
+          description: Google sign-in succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessResponse'
+        '401':
+          description: Invalid or expired Google ID token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /auth/refresh-token:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token for new access + refresh tokens
+      operationId: refreshTokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: New tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Invalidate the current refresh token server-side
+      description: |
+        Frontend always clears local tokens regardless of response code. Server-side this
+        revokes the current refresh-session JTI for the calling device.
+      operationId: logout
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyObject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 2. Profile
+  # ----------------------------------------------------------------------
+  /profile:
+    get:
+      tags: [profile]
+      summary: Fetch the authenticated user's full profile
+      operationId: getProfile
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    put:
+      tags: [profile]
+      summary: Update profile fields (PATCH-like — only supplied fields are written)
+      description: |
+        Unset fields are preserved. Unknown keys are silently dropped so the frontend can
+        roll out fields ahead of the backend. After save the server recomputes
+        `isProfileComplete` and persists it.
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateRequest'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /profile/photos:
+    post:
+      tags: [profile]
+      summary: Upload one or more profile photos (multipart)
+      description: |
+        Accepts up to 6 files in a single multipart request under the repeated field name `photos`.
+        Min total photos enforced server-side: 2. Max total: 6. Allowed formats: JPEG, PNG. Max
+        size: 10 MB per file.
+      operationId: uploadPhotos
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photos]
+              properties:
+                photos:
+                  type: array
+                  description: One file per array entry. Repeat the `photos` field per file.
+                  minItems: 1
+                  maxItems: 6
+                  items:
+                    type: string
+                    format: binary
+            encoding:
+              photos:
+                contentType: image/jpeg, image/png
+      responses:
+        '200':
+          description: Photos uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [photos]
+                properties:
+                  photos:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Photo'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /profile/photos/reorder:
+    put:
+      tags: [profile]
+      summary: Reorder the user's photos (first entry is the primary)
+      operationId: reorderPhotos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [photoIds]
+              properties:
+                photoIds:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    description: Cloudinary `publicId` for one of the user's photos.
+                  example: ["users/u123/abc", "users/u123/def"]
+      responses:
+        '200':
+          description: New ordering
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [photos]
+                properties:
+                  photos:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Photo'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /profile/photos/{publicId}:
+    delete:
+      tags: [profile]
+      summary: Delete a profile photo by its Cloudinary publicId
+      description: |
+        Fails with `400` if deletion would leave the user below the minimum required photos (2).
+        The `publicId` segment may contain `/`; frontend must URL-encode it (e.g. `users%2Fu123%2Fabc`).
+      operationId: deletePhoto
+      parameters:
+        - in: path
+          name: publicId
+          required: true
+          schema:
+            type: string
+          description: Cloudinary `publicId` (URL-encoded — slashes encoded as `%2F`).
+          example: users%2Fu123%2Fabc
+      responses:
+        '200':
+          description: Photo deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyObject'
+        '400':
+          description: Would leave the user below the minimum photo count.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /profile/selfie:
+    post:
+      tags: [profile]
+      summary: Upload a selfie for verification (multipart)
+      description: |
+        Single file under field name `selfie`. **As-implemented behavior**: the server stores
+        the selfie, sets `selfieReviewStatus='pending'` and `isVerified=false`, and returns
+        `{ verified: false, status: 'pending_review' }`. The verified badge is gated on a
+        manual admin approval (see Phase 1.3 admin selfie-review queue).
+
+        **TODO**: when an automatic face-match pipeline lands, the response may return
+        `verified: true` immediately on a high-confidence match.
+      operationId: uploadSelfie
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [selfie]
+              properties:
+                selfie:
+                  type: string
+                  format: binary
+            encoding:
+              selfie:
+                contentType: image/jpeg, image/png
+      responses:
+        '200':
+          description: Selfie accepted and queued for review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfieUploadResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 3. Swipe (girls' feed)
+  # ----------------------------------------------------------------------
+  /swipe/feed:
+    get:
+      tags: [swipe]
+      summary: Returns boys for a girl to swipe (cursor-paginated)
+      description: |
+        Backend filters: opposite gender (or per `preferences.genderPreference`), within
+        distance/age range, excluding users already liked / skipped / matched / blocked.
+        `nextCursor: null` indicates end of feed.
+      operationId: getSwipeFeed
+      parameters:
+        - in: query
+          name: cursor
+          required: false
+          schema:
+            type: string
+          description: Opaque pagination token returned in the previous response's `nextCursor`.
+        - in: query
+          name: minAge
+          required: false
+          schema:
+            type: integer
+            minimum: 18
+            maximum: 100
+            default: 18
+        - in: query
+          name: maxAge
+          required: false
+          schema:
+            type: integer
+            minimum: 18
+            maximum: 100
+            default: 99
+        - in: query
+          name: maxDistanceKm
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 50
+        - in: query
+          name: intent
+          required: false
+          schema:
+            $ref: '#/components/schemas/DatingIntention'
+          description: Filter candidates by `datingIntentions`.
+      responses:
+        '200':
+          description: A page of candidate profiles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SwipeFeedResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /swipe/like:
+    post:
+      tags: [swipe]
+      summary: Girl likes a boy (creates a pending Like, pushes onto his queue)
+      operationId: likeUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserIdRequest'
+      responses:
+        '200':
+          description: Like recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyObject'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /swipe/skip:
+    post:
+      tags: [swipe]
+      summary: Girl skips a boy (tracked for Undo support)
+      operationId: skipUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserIdRequest'
+      responses:
+        '200':
+          description: Skip recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyObject'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /swipe/undo:
+    post:
+      tags: [swipe]
+      summary: Undo the most recent skip in the current session
+      description: Re-queues the most-recently-skipped boy at the top of the next feed page.
+      operationId: undoSkip
+      responses:
+        '200':
+          description: Skip undone
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [undoneUserId]
+                properties:
+                  undoneUserId:
+                    type: string
+                    description: The userId of the boy re-queued at the top of the feed.
+        '400':
+          description: Nothing to undo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 4. Queue (boys' incoming likes)
+  # ----------------------------------------------------------------------
+  /queue:
+    get:
+      tags: [queue]
+      summary: Pending likes for the authenticated boy (page-paginated)
+      description: |
+        Sorted `createdAt DESC` with boosted senders prioritized at the top.
+      operationId: getQueue
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Pending likes page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /queue/accept/{likeId}:
+    post:
+      tags: [queue]
+      summary: Accept a pending like (creates a Match and emits `new-match`)
+      operationId: acceptLike
+      parameters:
+        - in: path
+          name: likeId
+          required: true
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+      responses:
+        '200':
+          description: Match created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [match]
+                properties:
+                  match:
+                    $ref: '#/components/schemas/MatchModel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /queue/reject/{likeId}:
+    post:
+      tags: [queue]
+      summary: Reject a pending like (removes from queue, no match)
+      operationId: rejectLike
+      parameters:
+        - in: path
+          name: likeId
+          required: true
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+      responses:
+        '200':
+          description: Like rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyObject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 5. Matches
+  # ----------------------------------------------------------------------
+  /matches:
+    get:
+      tags: [matches]
+      summary: List of the authenticated user's matches (page-paginated, newest activity first)
+      description: |
+        Sort: `lastMessage.createdAt DESC`. Matches with no messages have `lastMessage = null`
+        and are rendered by the frontend in a separate "New Matches" rail.
+      operationId: listMatches
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Matches page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchesListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /matches/{matchId}:
+    delete:
+      tags: [matches]
+      summary: Unmatch — deletes the match and all messages between both users
+      description: Optionally emits a `match-deleted` socket event to the other user.
+      operationId: unmatch
+      parameters:
+        - in: path
+          name: matchId
+          required: true
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+      responses:
+        '200':
+          description: Unmatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyObject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 6. Messages
+  # ----------------------------------------------------------------------
+  /messages/{matchId}:
+    get:
+      tags: [messages]
+      summary: Paginated message history for a match (chronological — newest at end)
+      description: |
+        Page 1 returns the most recent `limit` messages. The frontend renders the array
+        bottom-to-top. `hasMore: false` indicates no older messages remain.
+      operationId: getMessages
+      parameters:
+        - in: path
+          name: matchId
+          required: true
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+        - $ref: '#/components/parameters/Page'
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Messages page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /messages:
+    post:
+      tags: [messages]
+      summary: Send a message via HTTP (primary path; also broadcast over socket)
+      description: |
+        Response body is the created `MessageModel` itself — **not** wrapped in
+        `{ message: ... }`. Server also fans out `new-message` over Socket.IO to both
+        participants' personal rooms.
+      operationId: sendMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '200':
+          description: Message created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageModel'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /messages/{matchId}/seen:
+    put:
+      tags: [messages]
+      summary: Mark all unread messages from the OTHER user in this match as seen
+      description: Also emits `messages-seen` over Socket.IO so the sender's UI flips ticks.
+      operationId: markMessagesSeen
+      parameters:
+        - in: path
+          name: matchId
+          required: true
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+      responses:
+        '200':
+          description: Messages marked seen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyObject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 7. Boost
+  # ----------------------------------------------------------------------
+  /boost/plans:
+    get:
+      tags: [boost]
+      summary: List available boost plans (bronze / silver / gold tiers)
+      operationId: listBoostPlans
+      responses:
+        '200':
+          description: Plans list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [plans]
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BoostPlanModel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /boost/status:
+    get:
+      tags: [boost]
+      summary: Current user's active boost (if any)
+      operationId: getBoostStatus
+      responses:
+        '200':
+          description: Boost status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoostStatusModel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /boost/purchase:
+    post:
+      tags: [boost]
+      summary: Initiate a Stripe Checkout (or IAP) purchase for a boost tier
+      description: |
+        Returns a checkout URL. On `url: ""` the frontend silently skips the launch
+        (used for free-tier fallbacks). After successful payment, backend activates the
+        boost via Stripe webhook.
+      operationId: purchaseBoost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BoostPurchaseRequest'
+      responses:
+        '200':
+          description: Checkout URL issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+                    description: External checkout URL. Empty string disables the redirect.
+                    examples:
+                      - https://checkout.stripe.com/c/pay/cs_test_...
+                      - ""
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 8. Safety
+  # ----------------------------------------------------------------------
+  /report:
+    post:
+      tags: [safety]
+      summary: Report a user for a ToS violation
+      operationId: reportUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportUserRequest'
+      responses:
+        '200':
+          description: Report filed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyObject'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /block:
+    post:
+      tags: [safety]
+      summary: Block a user (auto-deletes any existing match between them)
+      operationId: blockUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserIdRequest'
+      responses:
+        '200':
+          description: User blocked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyObject'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 9. Account
+  # ----------------------------------------------------------------------
+  /account:
+    delete:
+      tags: [account]
+      summary: Permanently delete the authenticated user's account
+      description: |
+        Cascades: user row, photos (Cloudinary), likes (sent + received), matches, messages,
+        boost records, refresh tokens, FCM tokens. Requires the magic confirmation string
+        to prevent accidents.
+      operationId: deleteAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountDeleteRequest'
+      responses:
+        '200':
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyObject'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 10. Config (unauthenticated)
+  # ----------------------------------------------------------------------
+  /config:
+    get:
+      tags: [config]
+      summary: App-wide config — legal URLs, support email, min supported app version
+      operationId: getConfig
+      security: []
+      responses:
+        '200':
+          description: Config payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppConfig'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 11. Ideal Match
+  # ----------------------------------------------------------------------
+  /ideal-match:
+    get:
+      tags: [ideal-match]
+      summary: Highest-similarity match for the authenticated user
+      description: |
+        Cosine similarity over a weighted feature vector. `score` is `0.0`–`1.0`.
+        `commonalities` are pre-computed human-readable strings (e.g. "Both want long-term").
+        Returns `404` when the candidate pool is empty after filters.
+      operationId: getIdealMatch
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+          description: Total candidates returned (1 top match + up to limit-1 alternates).
+      responses:
+        '200':
+          description: Top match + alternates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdealMatchResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No candidates match after filters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+# --------------------------------------------------------------------------
+# Components
+# --------------------------------------------------------------------------
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        `Authorization: Bearer <accessToken>` on every request except `/auth/*` and `/config`.
+        On HTTP 401 the client calls `POST /auth/refresh-token` once and retries the original
+        request. If refresh fails the user is logged out client-side.
+
+  parameters:
+    Page:
+      in: query
+      name: page
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: 1-indexed page number.
+
+  responses:
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing, invalid, or expired access token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated but not allowed to access this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    # -------- Primitive scalars --------
+    ObjectId:
+      type: string
+      pattern: '^[a-fA-F0-9]{24}$'
+      description: 24-character MongoDB ObjectId hex string.
+      examples:
+        - 64f5b7c3e4d6f8a1b2c3d4e5
+
+    IsoDateTime:
+      type: string
+      format: date-time
+      description: ISO-8601 UTC timestamp.
+      examples:
+        - 2026-05-02T14:30:00.000Z
+
+    EmptyObject:
+      type: object
+      description: An empty JSON object — `{}`.
+      additionalProperties: false
+
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    # -------- Enums --------
+    Gender:
+      type: string
+      enum: [male, female, nonbinary]
+      description: Self-identified gender.
+
+    GenderPreference:
+      type: string
+      enum: [men, women, everyone]
+      description: Who the user wants to see in their feed.
+
+    DatingIntention:
+      type: string
+      enum:
+        - life_partner
+        - long_term
+        - long_term_open_short
+        - short_term_open_long
+        - short_term
+        - new_friends
+        - figuring_out
+
+    RelationshipType:
+      type: string
+      enum: [monogamy, non_monogamy, open_to_exploring, prefer_not_to_say]
+
+    Exercise:
+      type: string
+      enum: [active, sometimes, never, prefer_not_to_say]
+
+    Zodiac:
+      type: string
+      enum:
+        - aries
+        - taurus
+        - gemini
+        - cancer
+        - leo
+        - virgo
+        - libra
+        - scorpio
+        - sagittarius
+        - capricorn
+        - aquarius
+        - pisces
+
+    Children:
+      type: string
+      enum: [have, dont_have, prefer_not_to_say]
+
+    FamilyPlans:
+      type: string
+      enum: [want, dont_want, open, not_sure, prefer_not_to_say]
+
+    ViceFrequency:
+      type: string
+      enum: [yes, sometimes, rarely, no, prefer_not_to_say]
+      description: How often the user engages in a given vice.
+
+    Politics:
+      type: string
+      enum: [liberal, moderate, conservative, not_political, prefer_not_to_say]
+      description: |
+        Self-reported political leaning. Consumed by `idealMatch.service` scoring; must
+        be one of the listed values (no free-form string).
+
+    BoostLevel:
+      type: string
+      enum: [none, bronze, silver, gold]
+
+    BoostTier:
+      type: string
+      enum: [bronze, silver, gold]
+
+    LikeStatus:
+      type: string
+      enum: [pending, accepted, rejected]
+
+    LikeType:
+      type: string
+      enum: [like, super]
+      description: |
+        `super` is reserved for a future super-like feature; current backend always emits `like`.
+
+    ReportReason:
+      type: string
+      enum: [harassment, spam, fake, inappropriate, underage, other]
+
+    SelfieReviewStatus:
+      type: string
+      enum: [pending_review, approved, rejected]
+      description: |
+        As-implemented response status for `/profile/selfie`. Internally the user document
+        uses `selfieReviewStatus` with values `none|pending|approved|rejected`; the response
+        normalizes `pending` to `pending_review` for the client.
+
+    # -------- Error shape --------
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code (e.g. `VALIDATION_FAILED`, `OTP_EXPIRED`).
+              examples:
+                - VALIDATION_FAILED
+            message:
+              type: string
+              description: Human-readable message — the frontend surfaces this in a snackbar.
+              examples:
+                - Email is required
+            requestId:
+              type: string
+              description: |
+                Correlation ID from the request-id middleware (mirrors the `X-Request-Id`
+                response header). Optional — present on responses served after the requestId
+                middleware mounted; absent on older fixtures or pre-middleware errors.
+
+    # -------- Auth payloads --------
+    EmailRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    VerifyOtpRequest:
+      type: object
+      required: [email, code]
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: 6-digit OTP code.
+
+    GoogleSignInRequest:
+      type: object
+      required: [idToken]
+      properties:
+        idToken:
+          type: string
+          description: Google ID token returned by google_sign_in on the client.
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+
+    AuthSuccessResponse:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          required: [user, isNewUser]
+          properties:
+            user:
+              $ref: '#/components/schemas/UserModel'
+            isNewUser:
+              type: boolean
+
+    # -------- Common request payloads --------
+    UserIdRequest:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          $ref: '#/components/schemas/ObjectId'
+
+    SendMessageRequest:
+      type: object
+      required: [matchId, text]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/ObjectId'
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    ReportUserRequest:
+      type: object
+      required: [userId, reason]
+      properties:
+        userId:
+          $ref: '#/components/schemas/ObjectId'
+        reason:
+          $ref: '#/components/schemas/ReportReason'
+        details:
+          type: string
+          maxLength: 500
+          description: Free-text additional context, max 500 chars.
+
+    AccountDeleteRequest:
+      type: object
+      required: [confirmation]
+      properties:
+        confirmation:
+          type: string
+          enum: [DELETE_MY_ACCOUNT]
+          description: Magic string the client sends to acknowledge intent.
+
+    BoostPurchaseRequest:
+      type: object
+      required: [tier]
+      properties:
+        tier:
+          $ref: '#/components/schemas/BoostTier'
+
+    # -------- Domain objects --------
+    Photo:
+      type: object
+      required: [url, publicId]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Public Cloudinary delivery URL.
+          examples:
+            - https://res.cloudinary.com/reverse-match/image/upload/v123/users/u123/abc.jpg
+        publicId:
+          type: string
+          description: Cloudinary `publicId` — `<userId>/<random>` convention. Used for deletes and reorders.
+          examples:
+            - users/u123/abc
+
+    Prompt:
+      type: object
+      required: [question, answer]
+      properties:
+        question:
+          type: string
+          examples:
+            - My simple pleasures
+        answer:
+          type: string
+          maxLength: 300
+          examples:
+            - Filter coffee on a rainy morning
+
+    Vices:
+      type: object
+      description: Each vice is independently set; all keys optional.
+      properties:
+        drinking:
+          $ref: '#/components/schemas/ViceFrequency'
+        smoking:
+          $ref: '#/components/schemas/ViceFrequency'
+        marijuana:
+          $ref: '#/components/schemas/ViceFrequency'
+        drugs:
+          $ref: '#/components/schemas/ViceFrequency'
+      additionalProperties: false
+
+    Location:
+      type: object
+      description: |
+        Stored as GeoJSON Point in Mongo with a `2dsphere` index on `coordinates`.
+      required: [coordinates]
+      properties:
+        coordinates:
+          type: array
+          description: |
+            GeoJSON coordinate pair — `[longitude, latitude]`, NOT `[latitude, longitude]`.
+            Backend enforces order on save; frontend constructs it from the device geolocator.
+          minItems: 2
+          maxItems: 2
+          items:
+            type: number
+          examples:
+            - [72.8777, 19.0760]
+        city:
+          type: string
+          examples:
+            - Mumbai
+        state:
+          type: string
+          examples:
+            - Maharashtra
+
+    Preferences:
+      type: object
+      description: Match filtering preferences.
+      properties:
+        ageMin:
+          type: integer
+          minimum: 18
+          maximum: 100
+          default: 18
+        ageMax:
+          type: integer
+          minimum: 18
+          maximum: 100
+          default: 99
+        maxDistance:
+          type: integer
+          minimum: 1
+          description: Max distance in kilometers.
+          examples:
+            - 50
+        genderPreference:
+          $ref: '#/components/schemas/GenderPreference'
+
+    UserModel:
+      type: object
+      description: |
+        Canonical user shape returned by the backend. Fields the frontend defaults when missing:
+        - `pronouns`, `orientation`, `interests`, `photos`, `prompts`, `ethnicity`, `languages` → `[]`
+        - `daysWithoutMatch` → `0`
+        - `boostLevel` → `"none"`
+        - `isProfileComplete`, `isVerified` → `false`
+      required: [_id]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        age:
+          type: integer
+          minimum: 18
+          maximum: 100
+          description: Server-computed from `dob`. Frontend may also derive on render.
+        dob:
+          $ref: '#/components/schemas/IsoDateTime'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        pronouns:
+          type: array
+          items:
+            type: string
+          default: []
+        orientation:
+          type: array
+          items:
+            type: string
+          default: []
+        bio:
+          type: string
+          maxLength: 300
+        exercise:
+          $ref: '#/components/schemas/Exercise'
+        zodiac:
+          $ref: '#/components/schemas/Zodiac'
+        interests:
+          type: array
+          items:
+            type: string
+          default: []
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Photo'
+          minItems: 0
+          maxItems: 6
+          default: []
+        prompts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Prompt'
+          default: []
+        height:
+          type: integer
+          minimum: 100
+          maximum: 230
+          description: Height in cm.
+        ethnicity:
+          type: array
+          items:
+            type: string
+          default: []
+        children:
+          $ref: '#/components/schemas/Children'
+        familyPlans:
+          $ref: '#/components/schemas/FamilyPlans'
+        hometown:
+          type: string
+        jobTitle:
+          type: string
+        workplace:
+          type: string
+        education:
+          type: string
+        religion:
+          type: string
+        politics:
+          $ref: '#/components/schemas/Politics'
+        languages:
+          type: array
+          items:
+            type: string
+          default: []
+        datingIntentions:
+          $ref: '#/components/schemas/DatingIntention'
+        relationshipType:
+          $ref: '#/components/schemas/RelationshipType'
+        vices:
+          $ref: '#/components/schemas/Vices'
+        location:
+          $ref: '#/components/schemas/Location'
+        preferences:
+          $ref: '#/components/schemas/Preferences'
+        daysWithoutMatch:
+          type: integer
+          minimum: 0
+          default: 0
+        boostLevel:
+          $ref: '#/components/schemas/BoostLevel'
+          default: none
+        isProfileComplete:
+          type: boolean
+          default: false
+        isVerified:
+          type: boolean
+          default: false
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    ProfileUpdateRequest:
+      type: object
+      description: |
+        PATCH-like update of the user's profile. Unknown keys are silently dropped server-side.
+        Mirrors the body produced by `OnboardingController.backendPayload()` on the client.
+      properties:
+        name:
+          type: string
+        dob:
+          $ref: '#/components/schemas/IsoDateTime'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        pronouns:
+          type: array
+          items:
+            type: string
+        orientation:
+          type: array
+          items:
+            type: string
+        bio:
+          type: string
+          maxLength: 300
+        exercise:
+          $ref: '#/components/schemas/Exercise'
+        zodiac:
+          $ref: '#/components/schemas/Zodiac'
+        height:
+          type: integer
+          minimum: 100
+          maximum: 230
+        ethnicity:
+          type: array
+          items:
+            type: string
+        children:
+          $ref: '#/components/schemas/Children'
+        familyPlans:
+          $ref: '#/components/schemas/FamilyPlans'
+        hometown:
+          type: string
+        jobTitle:
+          type: string
+        workplace:
+          type: string
+        education:
+          type: string
+        religion:
+          type: string
+        politics:
+          $ref: '#/components/schemas/Politics'
+        languages:
+          type: array
+          items:
+            type: string
+        datingIntentions:
+          $ref: '#/components/schemas/DatingIntention'
+        relationshipType:
+          $ref: '#/components/schemas/RelationshipType'
+        vices:
+          $ref: '#/components/schemas/Vices'
+        prompts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Prompt'
+        preferences:
+          $ref: '#/components/schemas/Preferences'
+        location:
+          $ref: '#/components/schemas/Location'
+        interests:
+          type: array
+          items:
+            type: string
+      additionalProperties: true
+
+    SelfieUploadResponse:
+      type: object
+      required: [verified, status]
+      properties:
+        verified:
+          type: boolean
+          description: |
+            As-implemented: always `false` on initial upload; flipped `true` only by admin approval.
+        status:
+          $ref: '#/components/schemas/SelfieReviewStatus'
+
+    MessageModel:
+      type: object
+      required: [_id, matchId, sender, text, seen, createdAt]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        matchId:
+          $ref: '#/components/schemas/ObjectId'
+        sender:
+          $ref: '#/components/schemas/ObjectId'
+        text:
+          type: string
+        seen:
+          type: boolean
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    MatchModel:
+      type: object
+      required: [_id, users, unreadCount, createdAt]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        users:
+          type: array
+          description: The two participants of the match. Array length is always 2.
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/UserModel'
+        lastMessage:
+          oneOf:
+            - $ref: '#/components/schemas/MessageModel'
+            - type: 'null'
+          description: |
+            Most-recent message (full `MessageModel`), or `null` when no messages exist yet
+            (frontend renders these in a "New Matches" rail).
+        unreadCount:
+          type: integer
+          minimum: 0
+          default: 0
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    LikeModel:
+      type: object
+      required: [_id, fromUser, status, type, createdAt]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        fromUser:
+          $ref: '#/components/schemas/UserModel'
+        status:
+          $ref: '#/components/schemas/LikeStatus'
+        type:
+          $ref: '#/components/schemas/LikeType'
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    BoostPlanModel:
+      type: object
+      required: [id, name, tier, durationMinutes, priceCents, currency, price, duration, label]
+      properties:
+        id:
+          type: string
+          description: Stable plan identifier.
+          examples: [bronze-30]
+        name:
+          type: string
+          examples: [Bronze]
+        tier:
+          $ref: '#/components/schemas/BoostTier'
+        durationMinutes:
+          type: integer
+          minimum: 1
+        priceCents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 currency code.
+          examples: [USD]
+        price:
+          type: string
+          description: Pre-formatted price for display (e.g. "$0.99").
+          examples: ["$0.99"]
+        duration:
+          type: string
+          description: Pre-formatted duration for display (e.g. "30 min").
+          examples: [30 min]
+        label:
+          type: string
+          description: Marketing label shown next to the plan card.
+          examples: [Try it out]
+
+    BoostStatusModel:
+      type: object
+      required: [active]
+      properties:
+        active:
+          type: boolean
+        tier:
+          oneOf:
+            - $ref: '#/components/schemas/BoostTier'
+            - type: 'null'
+        expiresAt:
+          oneOf:
+            - $ref: '#/components/schemas/IsoDateTime'
+            - type: 'null'
+
+    # -------- List wrappers --------
+    SwipeFeedResponse:
+      type: object
+      required: [profiles]
+      properties:
+        profiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserModel'
+        nextCursor:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: Opaque cursor for the next page; `null` = end of feed.
+
+    MatchesListResponse:
+      type: object
+      required: [matches, hasMore]
+      properties:
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchModel'
+        hasMore:
+          type: boolean
+
+    QueueListResponse:
+      type: object
+      required: [likes, hasMore]
+      properties:
+        likes:
+          type: array
+          items:
+            $ref: '#/components/schemas/LikeModel'
+        hasMore:
+          type: boolean
+
+    MessagesListResponse:
+      type: object
+      required: [messages, hasMore]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageModel'
+        hasMore:
+          type: boolean
+
+    IdealMatchAlternate:
+      type: object
+      required: [user, score]
+      properties:
+        user:
+          $ref: '#/components/schemas/UserModel'
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+
+    IdealMatchResponse:
+      type: object
+      required: [topMatch, score, alternates, commonalities]
+      properties:
+        topMatch:
+          $ref: '#/components/schemas/UserModel'
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Frontend renders as `(score * 100).round()%`.
+        alternates:
+          type: array
+          items:
+            $ref: '#/components/schemas/IdealMatchAlternate'
+        commonalities:
+          type: array
+          description: Pre-computed human-readable strings rendered as chips.
+          items:
+            type: string
+
+    AppConfig:
+      type: object
+      required: [termsOfServiceUrl, privacyPolicyUrl, supportEmail, minAppVersion]
+      properties:
+        termsOfServiceUrl:
+          type: string
+          format: uri
+        privacyPolicyUrl:
+          type: string
+          format: uri
+        supportEmail:
+          type: string
+          format: email
+        minAppVersion:
+          type: string
+          description: SemVer minimum supported app version; clients below this are forced to update.
+          examples: ["1.0.0"]

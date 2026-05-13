@@ -8,9 +8,13 @@ const config = require('./config');
 const routes = require('./routes');
 const errorMiddleware = require('./middleware/error.middleware');
 const sanitize = require('./middleware/sanitize.middleware');
+const requestId = require('./middleware/requestId.middleware');
 const { initSentry, Sentry } = require('./config/sentry');
 const { getRedis } = require('./config/redis');
 const logger = require('./utils/logger');
+const {
+  httpMetricsMiddleware, metricsEndpoint,
+} = require('./observability/metrics');
 
 // Initialize Sentry early
 initSentry();
@@ -19,6 +23,30 @@ const app = express();
 
 // Trust proxy (Nginx)
 app.set('trust proxy', 1);
+
+// Request-ID middleware — Phase 0.5.
+// MUST be mounted before everything else so `req.id` is available to all
+// downstream middleware, route handlers, and the error middleware. Tags the
+// response with `X-Request-Id` and attaches a child pino logger as `req.log`.
+app.use(requestId);
+
+// HTTP metrics — Phase 0.9. Mounted right after request-id so every
+// timed request also carries a correlation id in its log lines.
+app.use(httpMetricsMiddleware());
+
+// Sentry: tag every event with the current request id. We set the scope tag
+// at the start of each request — Sentry.setupExpressErrorHandler() (mounted
+// below) will read this scope when reporting.
+if (config.sentryDsn) {
+  app.use((req, res, next) => {
+    try {
+      Sentry.getCurrentScope().setTag('request_id', req.id);
+    } catch (_) {
+      // Sentry may not be fully initialized in tests; silently skip.
+    }
+    next();
+  });
+}
 
 // Stripe webhook needs raw body - mount before json parser
 app.post(
@@ -64,12 +92,14 @@ app.use(express.urlencoded({ extended: true }));
 app.use(sanitize);
 
 // Request logging
+// Custom token so production access-log lines carry the request id (Phase 0.5).
+morgan.token('req_id', (req) => req.id || '-');
 if (config.nodeEnv === 'development') {
   app.use(morgan('dev'));
 } else {
   // Structured access logging in production
   app.use(
-    morgan(':method :url :status :response-time ms', {
+    morgan(':method :url :status :response-time ms req_id=:req_id', {
       stream: { write: (msg) => logger.info(msg.trim()) },
     }),
   );
@@ -84,6 +114,11 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+// Prometheus metrics — Phase 0.9.
+// Unauthenticated; relies on network ACLs to keep external scrapers out.
+// ECS scrapers run inside the VPC.
+app.get('/metrics', metricsEndpoint);
 
 // Deep health check
 app.get('/health', async (req, res) => {

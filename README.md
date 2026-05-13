@@ -29,7 +29,8 @@ This repository contains:
 10. [Scripts](#scripts)
 11. [Docker](#docker)
 12. [CI Pipeline](#ci-pipeline)
-13. [Production Checklist](#production-checklist)
+13. [Deployment](#deployment)
+14. [Production Checklist](#production-checklist)
 14. [Troubleshooting](#troubleshooting)
 15. [Additional Documentation](#additional-documentation)
 
@@ -133,14 +134,19 @@ Core flow:
 
 ## Repository Structure
 
+This is a monorepo. npm workspaces owns the Node side; Melos owns the Dart side; the Flutter SDK itself is pinned via FVM (`.fvmrc`) rather than vendored.
+
 ```text
-.
-|-- backend/                  # Express API, Mongo models, services, sockets
-|-- reverse_match/            # Flutter app
-|-- docker-compose.yml        # API + Mongo + Redis stack
-|-- dating_app_architecture.svg
-|-- COMPLETE_CODE_EXPLANATION.txt
-|-- New Text Document.txt     # initial requirement/spec
+- backend/         # Node/Express API + Socket.IO   (npm workspace)
+- reverse_match/   # Flutter mobile app             (Melos / FVM workspace)
+- docs/api/        # OpenAPI 3.1 + AsyncAPI (single source of truth)
+- infra/           # Terraform for AWS
+- packages/        # shared packages (api-client-dart added in Phase 0.2)
+- package.json     # root: npm workspaces, Prettier, Husky, lint-staged, Spectral
+- melos.yaml       # root: Dart/Flutter workspace
+- .fvmrc           # root: pinned Flutter SDK version
+- .prettierrc.json # root: Prettier config
+- docker-compose.yml
 ```
 
 ---
@@ -149,9 +155,10 @@ Core flow:
 
 Install the following:
 
-- Node.js 22+
+- Node.js >= 22 (matches `engines.node` in root `package.json`)
 - npm 10+
-- Flutter SDK (stable channel)
+- [FVM](https://fvm.app/) for the pinned Flutter SDK: `dart pub global activate fvm`
+- Docker (for `docker compose up`)
 - MongoDB 7+ (if not using Docker)
 - Redis 7+ (required in production, optional in local dev)
 
@@ -172,6 +179,17 @@ Optional external services:
 ```bash
 git clone <your-repo-url>
 cd dating
+```
+
+### 1a) Install monorepo tooling
+
+```bash
+# Install npm workspaces + root dev tooling (Prettier, Husky, lint-staged, Spectral).
+# `npm install` at the root is the entry point — do not run `npm install` inside backend/.
+npm install
+
+# Install the Flutter SDK version pinned in .fvmrc
+fvm install
 ```
 
 ### 2) Configure backend env
@@ -202,9 +220,11 @@ curl http://localhost:5000/health
 
 ```bash
 cd reverse_match
-flutter pub get
-flutter run --dart-define=ENV=development
+fvm flutter pub get
+fvm flutter run --dart-define=ENV=development
 ```
+
+> If you have a system-wide Flutter that matches `.fvmrc`, you can swap `fvm flutter` for `flutter`. FVM is recommended so contributors and CI converge on the same toolchain.
 
 ---
 
@@ -385,8 +405,37 @@ GitHub Actions workflow: `.github/workflows/ci.yml`
 
 Current jobs:
 
-1. Backend install + lint + tests
-2. Docker image build verification
+1. Path filter — only run jobs for paths that changed
+2. Backend lint (ESLint)
+3. Backend test (Jest + mongo + redis service containers)
+4. Backend Docker build (api and, when present, worker)
+5. OpenAPI / AsyncAPI lint (gated on `docs/api/` presence)
+6. Flutter analyze + test (gated on `reverse_match/` changes)
+
+---
+
+## Deployment
+
+Cloud target: **AWS** (ECS Fargate + ElastiCache Redis + MongoDB Atlas + ECR + Secrets Manager).
+
+- Staging deploys automatically from `main` with a manual approval gate.
+- Production deployment is **not yet wired** — it is intentionally Phase 1
+  scope. See the `TODO(Phase-1.16)` block at the bottom of
+  `.github/workflows/cd.yml`.
+
+Key files:
+
+- `.github/workflows/cd.yml` — staging deploy workflow (ECR push → ECS
+  force-new-deployment → smoke test)
+- `infra/terraform/staging/` — Terraform root for the staging environment
+- `infra/terraform/modules/` — reusable modules (network, ecr, ecs-fargate,
+  elasticache, secrets)
+- `docs/deployment/staging.md` — full runbook (bootstrap, deploy, rollback,
+  logs, troubleshooting)
+
+Rollback: `gh workflow run cd.yml -f deploy_only=true -f image_tag=sha-<previous>`
+
+For first-time setup steps, see [`docs/deployment/staging.md`](docs/deployment/staging.md).
 
 ---
 

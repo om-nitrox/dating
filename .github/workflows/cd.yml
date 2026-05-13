@@ -1,0 +1,253 @@
+name: CD (Staging)
+
+# ---------------------------------------------------------------------------
+# Continuous Deployment to AWS staging.
+#
+# Triggers:
+#   - push to main          → full build, push, deploy
+#   - workflow_dispatch     → manual run, optionally rollback-only
+#
+# Rollback: when staging is wedged, redeploy a known-good image without
+# building anything new:
+#
+#   gh workflow run cd.yml \
+#     -f deploy_only=true \
+#     -f image_tag=sha-<previous-good-commit-sha>
+#
+# Production deploy is intentionally NOT implemented yet — see TODO at the
+# bottom of this file (Phase-1.16 in the architecture plan).
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_only:
+        description: 'Skip build/push and only redeploy an existing image (rollback).'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+      image_tag:
+        description: 'Image tag to deploy. Used when deploy_only=true. Example: sha-abc1234'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: cd-staging
+  cancel-in-progress: false
+
+permissions:
+  id-token: write     # required for OIDC role assumption
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REGISTRY: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
+  API_REPO: reverse-match-api
+  WORKER_REPO: reverse-match-worker
+  ECS_CLUSTER: ${{ vars.STAGING_ECS_CLUSTER }}
+  API_SERVICE: ${{ vars.STAGING_API_SERVICE }}
+  WORKER_SERVICE: ${{ vars.STAGING_WORKER_SERVICE }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Resolve the image tag for this run. Either the input (rollback) or the
+  # commit SHA (normal deploy).
+  # ---------------------------------------------------------------------------
+  resolve-tag:
+    name: Resolve image tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      deploy_only: ${{ steps.tag.outputs.deploy_only }}
+    steps:
+      - id: tag
+        run: |
+          deploy_only="${{ github.event.inputs.deploy_only || 'false' }}"
+          input_tag="${{ github.event.inputs.image_tag }}"
+          if [ "$deploy_only" = "true" ]; then
+            if [ -z "$input_tag" ]; then
+              echo "::error::deploy_only=true requires image_tag input"
+              exit 1
+            fi
+            echo "tag=$input_tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "deploy_only=$deploy_only" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Build both images and push to ECR. Skipped on rollback runs.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build and push to ECR
+    runs-on: ubuntu-latest
+    needs: resolve-tag
+    if: needs.resolve-tag.outputs.deploy_only != 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build & push api image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.API_REPO }}:${{ needs.resolve-tag.outputs.tag }}
+            ${{ env.ECR_REGISTRY }}/${{ env.API_REPO }}:staging
+          cache-from: type=gha,scope=api-cd
+          cache-to: type=gha,mode=max,scope=api-cd
+
+      - name: Build & push worker image
+        if: hashFiles('backend/Dockerfile.worker') != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile.worker
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.WORKER_REPO }}:${{ needs.resolve-tag.outputs.tag }}
+            ${{ env.ECR_REGISTRY }}/${{ env.WORKER_REPO }}:staging
+          cache-from: type=gha,scope=worker-cd
+          cache-to: type=gha,mode=max,scope=worker-cd
+
+      - name: Warn if worker Dockerfile missing
+        if: hashFiles('backend/Dockerfile.worker') == ''
+        run: |
+          echo "::warning::backend/Dockerfile.worker not found — worker image was NOT pushed."
+          echo "::warning::Deploy-staging will skip the worker service for this run."
+
+  # ---------------------------------------------------------------------------
+  # Deploy to ECS staging. Uses GitHub Environments → manual approval is
+  # configured on the 'staging' environment (not in YAML — see runbook).
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy to staging (ECS)
+    runs-on: ubuntu-latest
+    needs: [resolve-tag, build-and-push]
+    # build-and-push is skipped on rollback runs; allow deploy-staging to run
+    # in that case by checking the previous job's result.
+    if: |
+      always() &&
+      (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force new deployment of api service
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$API_SERVICE" \
+            --force-new-deployment \
+            --query 'service.deployments[0].id' \
+            --output text
+
+      - name: Force new deployment of worker service
+        # Worker service may not exist yet in early Phase 0. Don't block deploy.
+        continue-on-error: true
+        run: |
+          if [ -z "$WORKER_SERVICE" ]; then
+            echo "STAGING_WORKER_SERVICE var not set — skipping worker deploy."
+            exit 0
+          fi
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$WORKER_SERVICE" \
+            --force-new-deployment \
+            --query 'service.deployments[0].id' \
+            --output text
+
+      - name: Wait for api service to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$API_SERVICE"
+
+  # ---------------------------------------------------------------------------
+  # Smoke test against the deployed staging URL.
+  # ---------------------------------------------------------------------------
+  smoke-test:
+    name: Smoke test staging
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    steps:
+      - name: Check /health
+        run: |
+          url="${{ vars.STAGING_API_URL }}"
+          if [ -z "$url" ]; then
+            echo "::error::vars.STAGING_API_URL is not set"
+            exit 1
+          fi
+          echo "Probing $url/health"
+          # Retry up to 10 times — ECS may finish stabilizing before ALB
+          # health checks flip all targets to healthy.
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /tmp/health.json -w "%{http_code}" "$url/health" || true)
+            echo "Attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Health check did not return 200 after 10 attempts"
+          cat /tmp/health.json || true
+          exit 1
+
+      - name: Check /api/v1/config
+        run: |
+          url="${{ vars.STAGING_API_URL }}"
+          code=$(curl -s -o /tmp/config.json -w "%{http_code}" "$url/api/v1/config")
+          echo "HTTP $code"
+          cat /tmp/config.json
+          [ "$code" = "200" ]
+
+# ---------------------------------------------------------------------------
+# TODO(Phase-1.16): Production deployment.
+#
+# Add the following jobs once staging has soaked and a runbook for prod is
+# approved:
+#
+#   build-and-push (re-tag :prod on green main + manual gate)
+#   deploy-production:
+#     environment: production         # requires manual approval (configured
+#                                     # in GitHub Environments, not here)
+#     needs: smoke-test
+#     # Promote the exact image SHA that passed staging — DO NOT rebuild.
+#     # Use `aws ecs update-service` against the prod cluster/services.
+#
+#   smoke-test-production:
+#     # Same probes as staging, against prod URL.
+#
+# Decisions still owed before enabling production:
+#   - Blue/green vs rolling (CodeDeploy w/ ECS for blue/green?)
+#   - Canary cutover policy (e.g., 10% → 50% → 100%)
+#   - Auto-rollback on CloudWatch alarm trip
+#   - Production database migration gating (Mongo Atlas migrations are
+#     usually app-driven; coordinate with backend agent)
+# ---------------------------------------------------------------------------

@@ -3,11 +3,13 @@ const Like = require('../models/Like');
 const Match = require('../models/Match');
 const User = require('../models/User');
 const AppError = require('../utils/AppError');
+const logger = require('../utils/logger');
 const { sendPush } = require('./notification.service');
 const { bumpCacheVersion } = require('../utils/cache');
 const { USER_PROJECTION } = require('../utils/userProjection');
 const withTransaction = require('../utils/withTransaction');
 const { invalidateIdealMatch } = require('./idealMatch.service');
+const { matchCreatedTotal } = require('../observability/metrics');
 
 const sessionOpt = (session) => (session ? { session } : {});
 
@@ -15,9 +17,17 @@ const sessionOpt = (session) => (session ? { session } : {});
  * Spec §4: pending likes for the authenticated boy, sorted with boosted
  * users at the top (effective boost — including auto-boost from
  * daysWithoutMatch), then by createdAt DESC.
+ *
+ * Phase 0.3: now page-paginated. Spec contract is `{ likes, hasMore }`
+ * with `page` (1-indexed) and `limit` (capped at 100, default 20).
  */
-const getQueue = async (userId) => {
+const getQueue = async (userId, page = 1, limit = 20) => {
   const objectUserId = new mongoose.Types.ObjectId(userId);
+  // Defensive clamping — controllers should pre-validate, but never trust
+  // a caller; the spec says `limit` <= 100.
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+  const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (safePage - 1) * safeLimit;
 
   const likes = await Like.aggregate([
     { $match: { toUser: objectUserId, status: 'pending' } },
@@ -76,6 +86,11 @@ const getQueue = async (userId) => {
     },
 
     { $sort: { boostScore: -1, createdAt: -1 } },
+    { $skip: skip },
+    // Fetch one extra row so we can compute hasMore without a separate
+    // countDocuments() — cheaper, race-free, and matches the pattern used
+    // by match.service.getMatches.
+    { $limit: safeLimit + 1 },
 
     // Final shape: LikeModel per spec §13
     {
@@ -89,7 +104,10 @@ const getQueue = async (userId) => {
     },
   ]);
 
-  return { likes };
+  const hasMore = likes.length > safeLimit;
+  if (hasMore) likes.pop();
+
+  return { likes, hasMore };
 };
 
 /**
@@ -146,6 +164,11 @@ const accept = async (userId, likeId) => {
 
     return upsertRes._id;
   });
+
+  // Phase 0.9: bump the match-created counter once per accepted like.
+  // Logged with the structured-event convention (match.created).
+  matchCreatedTotal.inc();
+  logger.info({ event: 'match.created', matchId: matchId.toString() }, 'match created');
 
   // Bump versioned caches for both participants (after commit) so a stale
   // feed/exclude entry never resurfaces a matched user.

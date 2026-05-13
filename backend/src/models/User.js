@@ -1,4 +1,18 @@
 const mongoose = require('mongoose');
+const {
+  GENDER: GENDER_VALUES,
+  GENDER_PREFERENCE: GENDER_PREFERENCE_VALUES,
+  VICE_LEVELS: FREQUENCY_VALUES,
+  CHILDREN: CHILDREN_VALUES,
+  FAMILY_PLANS: FAMILY_PLANS_VALUES,
+  DATING_INTENTIONS: DATING_INTENTIONS_VALUES,
+  RELATIONSHIP_TYPE: RELATIONSHIP_TYPE_VALUES,
+  EXERCISE: EXERCISE_VALUES,
+  ZODIAC: ZODIAC_VALUES,
+  SELFIE_REVIEW_STATUS,
+  BOOST_LEVEL,
+  USER_ROLE,
+} = require('../domain/taxonomies');
 
 const promptSchema = new mongoose.Schema(
   {
@@ -29,37 +43,9 @@ const fcmTokenSchema = new mongoose.Schema(
   { _id: false },
 );
 
-const GENDER_VALUES = ['male', 'female', 'nonbinary'];
-const GENDER_PREFERENCE_VALUES = ['men', 'women', 'everyone'];
-const FREQUENCY_VALUES = ['yes', 'sometimes', 'rarely', 'no', 'prefer_not_to_say'];
-const CHILDREN_VALUES = ['have', 'dont_have', 'prefer_not_to_say'];
-const FAMILY_PLANS_VALUES = [
-  'want',
-  'dont_want',
-  'open',
-  'not_sure',
-  'prefer_not_to_say',
-];
-const DATING_INTENTIONS_VALUES = [
-  'life_partner',
-  'long_term',
-  'long_term_open_short',
-  'short_term_open_long',
-  'short_term',
-  'new_friends',
-  'figuring_out',
-];
-const RELATIONSHIP_TYPE_VALUES = [
-  'monogamy',
-  'non_monogamy',
-  'open_to_exploring',
-  'prefer_not_to_say',
-];
-const EXERCISE_VALUES = ['active', 'sometimes', 'never', 'prefer_not_to_say'];
-const ZODIAC_VALUES = [
-  'aries', 'taurus', 'gemini', 'cancer', 'leo', 'virgo',
-  'libra', 'scorpio', 'sagittarius', 'capricorn', 'aquarius', 'pisces',
-];
+// All enum values come from the canonical `src/domain/taxonomies.js`
+// module (destructured at the top of this file). Aliased locally to the
+// original `*_VALUES` names so the rest of the schema reads naturally.
 
 const userSchema = new mongoose.Schema(
   {
@@ -215,7 +201,7 @@ const userSchema = new mongoose.Schema(
     // manual (or future automated) face-match review approves the selfie.
     selfieReviewStatus: {
       type: String,
-      enum: ['none', 'pending', 'approved', 'rejected'],
+      enum: SELFIE_REVIEW_STATUS,
       default: 'none',
     },
 
@@ -226,7 +212,7 @@ const userSchema = new mongoose.Schema(
     },
     boostLevel: {
       type: String,
-      enum: ['none', 'bronze', 'silver', 'gold'],
+      enum: BOOST_LEVEL,
       default: 'none',
     },
     boostExpiry: {
@@ -272,7 +258,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['user', 'admin'],
+      enum: USER_ROLE,
       default: 'user',
     },
 
@@ -303,6 +289,11 @@ userSchema.index({ boostLevel: 1, boostExpiry: 1 });
 userSchema.index({ daysWithoutMatch: -1 });
 
 module.exports = mongoose.model('User', userSchema);
+
+// Backward-compatibility shim. The canonical source for these arrays is
+// `src/domain/taxonomies.js`; new code should import from there directly.
+// Kept here in case any external script (seed.js, ad-hoc admin tooling)
+// still reads `require('../models/User').enums`.
 module.exports.enums = {
   GENDER_VALUES,
   GENDER_PREFERENCE_VALUES,

@@ -1,0 +1,43 @@
+# Melos owns the Dart/Flutter workspace; npm workspaces owns the Node workspace.
+# Phase 0.2 will add `packages/api-client-dart` for OpenAPI-generated models
+# so the Flutter app and any future Dart tooling share a single typed client.
+#
+# Bootstrap (one-time, per developer):
+#   dart pub global activate melos
+#   melos bootstrap
+#
+name: reverse_match
+repository: https://github.com/OWNER/REPO
+
+packages:
+  - reverse_match
+  - packages/**
+
+command:
+  bootstrap:
+    runPubGetInParallel: true
+
+scripts:
+  analyze:
+    description: Run `dart analyze` across all Dart packages.
+    run: dart analyze
+    exec:
+      concurrency: 1
+
+  format:
+    description: Run `dart format .` across all Dart packages.
+    run: dart format .
+    exec:
+      concurrency: 1
+
+  format:check:
+    description: Verify formatting without writing changes.
+    run: dart format --set-exit-if-changed .
+    exec:
+      concurrency: 1
+
+  test:
+    description: Run `flutter test` in each package that supports it.
+    run: flutter test
+    packageFilters:
+      flutter: true

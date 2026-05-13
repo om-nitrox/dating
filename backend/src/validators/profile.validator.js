@@ -1,15 +1,22 @@
+// Phase 0.3 note: spec-side equivalents are in ./generated/requests.js
+// (`updateProfile`, `reorderPhotos`). The Joi schemas below stay because
+// they carry custom logic the OpenAPI spec doesn't model:
+//   - `ageMin <= ageMax` cross-field check on preferences
+//   - `nullableString` (Joi accepts '' and null to clear an optional field)
+//   - `fcmToken` side-channel field
+// When the spec grows to cover these, swap to `zodValidate(requests.updateProfile)`.
 const Joi = require('joi');
-const User = require('../models/User');
-
 const {
-  GENDER_VALUES,
-  GENDER_PREFERENCE_VALUES,
-  FREQUENCY_VALUES,
-  CHILDREN_VALUES,
-  FAMILY_PLANS_VALUES,
-  DATING_INTENTIONS_VALUES,
-  RELATIONSHIP_TYPE_VALUES,
-} = User.enums;
+  GENDER: GENDER_VALUES,
+  GENDER_PREFERENCE: GENDER_PREFERENCE_VALUES,
+  VICE_LEVELS: FREQUENCY_VALUES,
+  CHILDREN: CHILDREN_VALUES,
+  FAMILY_PLANS: FAMILY_PLANS_VALUES,
+  DATING_INTENTIONS: DATING_INTENTIONS_VALUES,
+  RELATIONSHIP_TYPE: RELATIONSHIP_TYPE_VALUES,
+  EXERCISE: EXERCISE_VALUES,
+  ZODIAC: ZODIAC_VALUES,
+} = require('../domain/taxonomies');
 
 // Allow clients to explicitly clear optional fields by sending null.
 const nullableString = (max) => Joi.string().trim().max(max).allow('', null);
@@ -18,12 +25,6 @@ const promptSchema = Joi.object({
   question: Joi.string().trim().max(120).required(),
   answer: Joi.string().trim().max(225).required(),
 });
-
-const EXERCISE_VALUES = ['active', 'sometimes', 'never', 'prefer_not_to_say'];
-const ZODIAC_VALUES = [
-  'aries', 'taurus', 'gemini', 'cancer', 'leo', 'virgo',
-  'libra', 'scorpio', 'sagittarius', 'capricorn', 'aquarius', 'pisces',
-];
 
 const updateProfileSchema = Joi.object({
   // identity

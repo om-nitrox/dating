@@ -1,6 +1,18 @@
 const logger = require('../utils/logger');
 const config = require('../config');
 
+/**
+ * Global error handler.
+ *
+ * Response shape (Phase 0.5):
+ *   { error: { code: string, message: string, requestId: string } }
+ *
+ * `requestId` is the value of `req.id` set by the requestId middleware. The
+ * frontend already tolerates extra keys; adding `requestId` lets users (or
+ * Sentry) attach the same id from the response when filing a bug, making
+ * server-side log correlation trivial. In development we additionally
+ * surface `error.stack`.
+ */
 const errorMiddleware = (err, req, res, _next) => {
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Internal server error';
@@ -47,18 +59,25 @@ const errorMiddleware = (err, req, res, _next) => {
     code = err.code || 'APP_ERROR';
   }
 
+  // Prefer the request-scoped child logger if available so `req_id` is
+  // always present on the log record. Falls back to the root logger if the
+  // requestId middleware wasn't mounted (e.g. in some unit-test setups).
+  const log = req.log || logger;
+
   // Log server errors with full details
   if (statusCode >= 500) {
-    logger.error({
+    log.error({
       err,
+      req_id: req.id,
       method: req.method,
       url: req.originalUrl,
       statusCode,
     }, 'Server error');
   } else if (!err.isOperational) {
-    logger.warn({
+    log.warn({
       code,
       message,
+      req_id: req.id,
       method: req.method,
       url: req.originalUrl,
       statusCode,
@@ -66,7 +85,7 @@ const errorMiddleware = (err, req, res, _next) => {
   }
 
   const response = {
-    error: { code, message },
+    error: { code, message, requestId: req.id },
   };
 
   if (config.nodeEnv === 'development') {

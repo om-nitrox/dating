@@ -1,11 +1,13 @@
 const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
+const { randomUUID } = require('crypto');
 const { verifyAccessToken } = require('../utils/token');
 const { getRedis } = require('../config/redis');
 const User = require('../models/User');
 const chatHandler = require('./chat.handler');
 const config = require('../config');
 const logger = require('../utils/logger');
+const { socketConnectionsActive } = require('../observability/metrics');
 
 /**
  * Extract a bearer token from either:
@@ -91,21 +93,34 @@ const initSocket = (httpServer, redisClient) => {
   io.on('connection', (socket) => {
     const userId = socket.user.id;
 
+    // Phase 0.5: assign a `connection_id` to every socket so every log line
+    // and Sentry event raised during this connection is correlatable to the
+    // exact socket instance. This is distinct from the HTTP `req.id`
+    // (sockets are long-lived; an HTTP req is a single round-trip).
+    const connectionId = randomUUID();
+    socket.data.connectionId = connectionId;
+    socket.data.log = logger.child({ connection_id: connectionId, userId });
+
     // Personal room for targeted events (works across instances with Redis adapter)
     socket.join(userId);
 
-    logger.debug({ userId }, 'User connected via socket');
+    // Phase 0.9: track active connection count (gauge).
+    socketConnectionsActive.inc();
+
+    // Phase 0.9: structured-log convention — `socket.*` events.
+    socket.data.log.info({ event: 'socket.connected', userId }, 'socket connected');
 
     // Set up chat handlers
     chatHandler(io, socket);
 
     socket.on('disconnect', () => {
-      logger.debug({ userId }, 'User disconnected from socket');
+      socketConnectionsActive.dec();
+      socket.data.log.info({ event: 'socket.disconnected', userId }, 'socket disconnected');
     });
 
     // Error handling per socket
     socket.on('error', (err) => {
-      logger.warn({ userId, err: err.message }, 'Socket error');
+      socket.data.log.warn({ err: err.message }, 'Socket error');
     });
   });
 

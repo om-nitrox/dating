@@ -8,51 +8,23 @@ const { cacheGet, cacheSet } = require('../utils/cache');
 const { USER_PROJECTION } = require('../utils/userProjection');
 
 // -------- Categorical taxonomies (one-hot) --------
-const GENDERS = ['male', 'female', 'nonbinary'];
-const DATING_INTENTIONS = [
-  'life_partner',
-  'long_term',
-  'long_term_open_short',
-  'short_term_open_long',
-  'short_term',
-  'new_friends',
-  'figuring_out',
-];
-const RELATIONSHIP_TYPES = [
-  'monogamy',
-  'non_monogamy',
-  'open_to_exploring',
-  'prefer_not_to_say',
-];
-const EXERCISE = ['active', 'sometimes', 'never', 'prefer_not_to_say'];
-const CHILDREN = ['have', 'dont_have', 'prefer_not_to_say'];
-const FAMILY_PLANS = ['want', 'dont_want', 'open', 'not_sure', 'prefer_not_to_say'];
-const RELIGIONS = [
-  'Hindu',
-  'Muslim',
-  'Christian',
-  'Jewish',
-  'Buddhist',
-  'Sikh',
-  'Atheist',
-  'Spiritual',
-  'Other',
-];
-const POLITICS = ['left', 'center_left', 'center', 'center_right', 'right'];
-const VICE_VALUES = ['yes', 'sometimes', 'rarely', 'no', 'prefer_not_to_say'];
-
-// Top-N multi-hot dictionaries — kept short for v1 scale.
-const TOP_INTERESTS = [
-  'Travel', 'Cooking', 'Reading', 'Music', 'Movies', 'Fitness', 'Yoga', 'Hiking',
-  'Photography', 'Art', 'Dancing', 'Gaming', 'Coffee', 'Wine', 'Food', 'Fashion',
-  'Sports', 'Pets', 'Beach', 'Coding', 'Writing', 'Theatre', 'Concerts',
-  'Running', 'Cycling', 'Swimming', 'Volunteering', 'Meditation', 'Podcasts',
-  'Astrology',
-];
-const TOP_LANGUAGES = [
-  'English', 'Hindi', 'Spanish', 'Mandarin', 'French', 'Arabic', 'Portuguese',
-  'Bengali', 'Russian', 'Japanese',
-];
+// All taxonomies come from the canonical `src/domain/taxonomies.js` module.
+// Local aliases preserve the existing call-site names so the encoder reads
+// the same as before. Some pairs (e.g. RELATIONSHIP_TYPE → RELATIONSHIP_TYPES)
+// rename to match earlier in-file conventions.
+const {
+  GENDER: GENDERS,
+  DATING_INTENTIONS,
+  RELATIONSHIP_TYPE: RELATIONSHIP_TYPES,
+  EXERCISE,
+  CHILDREN,
+  FAMILY_PLANS,
+  RELIGION: RELIGIONS,
+  POLITICS,
+  VICE_LEVELS: VICE_VALUES,
+  INTERESTS_TOP_30: TOP_INTERESTS,
+  LANGUAGES_TOP_10: TOP_LANGUAGES,
+} = require('../domain/taxonomies');
 
 // Per-feature weights — applied per-block, not per-dimension, so blocks with
 // more dimensions are not over-weighted just by sheer width.
@@ -226,11 +198,11 @@ const resolveTargetGenders = (viewer) => {
   const pref = viewer.preferences?.genderPreference;
   if (pref === 'men') return ['male'];
   if (pref === 'women') return ['female'];
-  if (pref === 'everyone') return ['male', 'female', 'nonbinary'];
+  if (pref === 'everyone') return [...GENDERS];
   // Default: opposite gender
   if (viewer.gender === 'female') return ['male'];
   if (viewer.gender === 'male') return ['female'];
-  return ['male', 'female', 'nonbinary'];
+  return [...GENDERS];
 };
 
 /**

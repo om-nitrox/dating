@@ -97,6 +97,15 @@ const config = Object.freeze({
   // Public app metadata returned by GET /config (spec §10)
   supportEmail: process.env.SUPPORT_EMAIL || 'support@reversematch.app',
   minAppVersion: process.env.MIN_APP_VERSION || '1.0.0',
+
+  // BullMQ worker (Phase 0.7)
+  // The worker process exposes a `/metrics` Prometheus endpoint on this
+  // port. Kept separate from the api `port` so the api and worker can
+  // run in the same container/host without conflicting.
+  workerMetricsPort: parseInt(process.env.WORKER_METRICS_PORT, 10) || 9091,
+  // BullMQ queue prefix in Redis. Override per-env (dev/test/staging/prod)
+  // to keep job streams isolated when sharing a Redis instance.
+  bullmqQueuePrefix: process.env.BULLMQ_QUEUE_PREFIX || 'rm',
 });
 
 module.exports = config;

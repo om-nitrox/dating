@@ -1,5 +1,6 @@
 const messageService = require('../services/message.service');
 const catchAsync = require('../utils/catchAsync');
+const { emitNewMessage, emitMessagesSeen } = require('../realtime/events');
 
 const getMessages = catchAsync(async (req, res) => {
   // Spec §6: page-based, defaults page=1, limit=50.
@@ -23,21 +24,13 @@ const sendMessage = catchAsync(async (req, res) => {
     req.body.text,
   );
 
-  // Spec §6 + §12: emit `new-message` to the match room with payload
-  // shape `{ matchId, message: MessageModel }`.
-  const io = req.app.get('io');
-  if (io) {
-    const payload = { matchId: req.body.matchId, message };
-    io.to(req.body.matchId).emit('new-message', payload);
-
-    // Also deliver to each participant's personal room so push-back-to-list
-    // and badge updates still happen even when the chat screen is closed.
-    if (match) {
-      match.users.forEach((u) => {
-        io.to(u.toString()).emit('new-message', payload);
-      });
-    }
-  }
+  // Phase 0.6: emit `new-message` through the centralized event bus.
+  emitNewMessage(req.app.get('io'), {
+    matchId: req.body.matchId,
+    message,
+    participantIds: match ? match.users : [],
+    log: req.log,
+  });
 
   // Spec §6: response is the FLAT MessageModel (NOT wrapped in `{ message }`).
   res.status(200).json(message);
@@ -46,7 +39,7 @@ const sendMessage = catchAsync(async (req, res) => {
 const markSeen = catchAsync(async (req, res) => {
   const seenAt = await messageService.markSeen(req.params.matchId, req.user.id);
 
-  // Spec §12: emit `messages-seen` with `{ matchId, seenAt }` to the other user.
+  // Phase 0.6: emit `messages-seen` through the centralized event bus.
   // markSeen already verified participation. We do one targeted Match read
   // here so we can route to the OTHER user's personal room.
   const io = req.app.get('io');
@@ -59,9 +52,11 @@ const markSeen = catchAsync(async (req, res) => {
         (u) => u.toString() !== req.user.id.toString(),
       );
       if (otherId) {
-        io.to(otherId.toString()).emit('messages-seen', {
+        emitMessagesSeen(io, {
           matchId: req.params.matchId,
+          otherUserId: otherId,
           seenAt: seenAt.toISOString(),
+          log: req.log,
         });
       }
     }

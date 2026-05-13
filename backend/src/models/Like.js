@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { LIKE_STATUS, LIKE_TYPE } = require('../domain/taxonomies');
 
 const likeSchema = new mongoose.Schema(
   {
@@ -14,13 +15,13 @@ const likeSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'accepted', 'rejected', 'skipped'],
+      enum: LIKE_STATUS,
       default: 'pending',
     },
     // 'like' | 'super' — future-proof for super-likes (spec §4)
     type: {
       type: String,
-      enum: ['like', 'super'],
+      enum: LIKE_TYPE,
       default: 'like',
     },
   },

@@ -1,0 +1,15 @@
+# Output of `dart run build_runner build` via openapi_generator.
+# Today (Phase 0.2) the hand-written equivalent lives at ../models/ and
+# ../apis/; nothing is written here yet. Once codegen is enabled this
+# directory will be regenerated on every spec change.
+#
+# We gitignore everything because:
+#   1. The hand-written sources are the source of truth today.
+#   2. When codegen lands, the contents are deterministic from the spec, so
+#      a hash-based drift check (see .github/workflows/ci.yml > flutter-codegen-drift)
+#      is enough to guarantee CI catches stale-spec scenarios.
+#
+# To swap to committed codegen later, replace the contents of this file with
+# `!*` to allow tracking.
+*
+!.gitignore

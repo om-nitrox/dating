@@ -59,3 +59,9 @@ reverse_match/coverage/
 
 # Local SDK / tool checkouts
 flutter/
+.fvm/
+
+# Node.js / monorepo tooling
+node_modules/
+.husky/_
+.lint-staged-cache/

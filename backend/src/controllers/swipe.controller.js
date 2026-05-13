@@ -1,5 +1,6 @@
 const swipeService = require('../services/swipe.service');
 const catchAsync = require('../utils/catchAsync');
+const { emitNewLike } = require('../realtime/events');
 
 const getFeed = catchAsync(async (req, res) => {
   const result = await swipeService.getFeed(
@@ -21,14 +22,12 @@ const getFeed = catchAsync(async (req, res) => {
 const like = catchAsync(async (req, res) => {
   await swipeService.like(req.user.id, req.body.userId);
 
-  // Spec §12: emit `new-like` to the boy's personal room.
-  // Payload shape: `{ fromUserId: string }`.
-  const io = req.app.get('io');
-  if (io) {
-    io.to(req.body.userId).emit('new-like', {
-      fromUserId: req.user.id.toString(),
-    });
-  }
+  // Phase 0.6: emit `new-like` through the centralized event bus.
+  emitNewLike(req.app.get('io'), {
+    fromUserId: req.user.id,
+    toUserId: req.body.userId,
+    log: req.log,
+  });
 
   // Spec §3: response is `{}` (200).
   res.status(200).json({});

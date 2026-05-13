@@ -1,3 +1,13 @@
+// Phase 0.3 note: the spec-side equivalents of these validators are
+// generated from docs/api/openapi.yaml into ./generated/requests.js
+// (`requestEmailOtp`, `verifyEmailOtp`, `googleSignIn`, `refreshTokens`).
+// The Joi schemas below stay because:
+//   - they accept `dateOfBirth` as a side-channel field the OpenAPI spec
+//     does not yet declare (it's collected during onboarding via
+//     PUT /profile, but legacy clients still send it here);
+//   - they use Joi's `stripUnknown` so unknown keys don't 400 today.
+// When `dateOfBirth` is dropped from the contract these can be replaced
+// with `zodValidate(requests.<op>)`.
 const Joi = require('joi');
 
 const signupSchema = Joi.object({

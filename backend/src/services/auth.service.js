@@ -9,6 +9,7 @@ const {
 const { getRedis } = require('../config/redis');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
+const { otpSentTotal } = require('../observability/metrics');
 
 const googleClient = config.googleClientId
   ? new OAuth2Client(config.googleClientId)
@@ -36,7 +37,20 @@ const sendOtp = async (email) => {
   // code so a DB dump never exposes a valid OTP.
   await Otp.deleteMany({ email });
   await Otp.create({ email, codeHash: hashOtp(code), expiresAt });
-  await sendOtpEmail(email, code);
+  try {
+    await sendOtpEmail(email, code);
+    // Phase 0.9: tag result so dashboards can split sent vs failed.
+    otpSentTotal.labels({ result: 'sent' }).inc();
+    logger.info({ event: 'auth.otp_sent', email }, 'otp sent');
+  } catch (err) {
+    otpSentTotal.labels({ result: 'failed' }).inc();
+    logger.warn(
+      { event: 'auth.otp_send_failed', email, err: err.message },
+      'otp send failed',
+    );
+    // Re-throw so the controller still surfaces the 500 to the caller.
+    throw err;
+  }
 
   return { message: 'OTP sent successfully' };
 };
@@ -307,6 +321,12 @@ const issueTokens = async (user, isNewUser) => {
 
   // Reload to get the up-to-date doc (without refreshSessions in the response).
   const fresh = await User.findById(user._id);
+
+  // Phase 0.9: structured-log convention — `auth.login_success`.
+  logger.info(
+    { event: 'auth.login_success', userId: user._id.toString(), isNewUser },
+    'auth login success',
+  );
 
   return {
     accessToken,

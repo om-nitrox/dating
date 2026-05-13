@@ -2,14 +2,83 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, backend]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
+
+# Cancel superseded runs on the same branch/PR to save minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  backend-lint-and-test:
-    name: Backend CI
+  # ---------------------------------------------------------------------------
+  # Path filter: figure out which parts of the monorepo changed so downstream
+  # jobs can skip work that isn't relevant to the PR.
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Detect changed paths
     runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      flutter: ${{ steps.filter.outputs.flutter }}
+      openapi: ${{ steps.filter.outputs.openapi }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/ci.yml'
+              - 'docker-compose.yml'
+            flutter:
+              - 'reverse_match/**'
+              - '.github/workflows/ci.yml'
+            openapi:
+              - 'docs/api/**'
+            infra:
+              - 'infra/**'
+              - '.github/workflows/cd.yml'
+
+  # ---------------------------------------------------------------------------
+  # Backend lint (fast — separated from tests so a style break fails quickly)
+  # ---------------------------------------------------------------------------
+  backend-lint:
+    name: Backend Lint
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.openapi == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - run: npm run lint
+        working-directory: backend
+      # Phase 0.3: validator codegen drift check. If anyone edits the OpenAPI
+      # spec without regenerating, this step fails so the PR is forced to
+      # either commit the regenerated output or revert the spec change.
+      - name: Regenerate validators
+        run: npm run codegen:validators
+        working-directory: backend
+      - name: Fail on drift
+        run: git diff --exit-code backend/src/validators/generated/
+
+  # ---------------------------------------------------------------------------
+  # Backend test (with mongo + redis service containers)
+  # ---------------------------------------------------------------------------
+  backend-test:
+    name: Backend Test
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
 
     services:
       mongo:
@@ -21,7 +90,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
       redis:
         image: redis:7-alpine
         ports:
@@ -41,50 +109,168 @@ jobs:
       PORT: 5000
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
-
-      - name: Install dependencies
+      - run: npm ci
         working-directory: backend
-        run: npm ci
-
-      - name: Run lint
+      - run: npm test
         working-directory: backend
-        run: npm run lint
 
-      - name: Run tests
-        working-directory: backend
-        run: npm test
-
-  docker-build:
-    name: Docker Build
+  # ---------------------------------------------------------------------------
+  # Backend Docker build — builds api image, and (when present) the worker
+  # image. The worker image is added by a parallel agent; until that lands,
+  # the worker step is gated by hashFiles().
+  # ---------------------------------------------------------------------------
+  backend-build:
+    name: Backend Docker Build
     runs-on: ubuntu-latest
-    needs: backend-lint-and-test
-
+    needs: [changes, backend-lint, backend-test]
+    if: needs.changes.outputs.backend == 'true'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
-        working-directory: backend
-        run: docker build -t reverse-match-api:${{ github.sha }} .
+      - name: Build api image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: false
+          tags: reverse-match-api:ci-${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
 
-      - name: Verify image runs
+      - name: Build worker image (if Dockerfile.worker exists)
+        if: hashFiles('backend/Dockerfile.worker') != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile.worker
+          push: false
+          tags: reverse-match-worker:ci-${{ github.sha }}
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+        # Worker Dockerfile is being added by a parallel agent — until it
+        # lands, don't fail the whole pipeline on its absence.
+        continue-on-error: true
+
+  # ---------------------------------------------------------------------------
+  # OpenAPI / AsyncAPI lint — gated by file presence (parallel agent
+  # populates docs/api/). Stays green until that lands, then enforces.
+  # ---------------------------------------------------------------------------
+  openapi-lint:
+    name: OpenAPI Lint
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.openapi == 'true' || hashFiles('docs/api/openapi.yaml') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root dev dependencies (spectral)
+        run: npm ci --ignore-scripts --workspaces=false --include-workspace-root
+
+      - name: Lint OpenAPI + AsyncAPI specs
+        if: hashFiles('docs/api/openapi.yaml') != '' || hashFiles('docs/api/asyncapi.yaml') != ''
+        run: npm run lint:openapi
+
+  # ---------------------------------------------------------------------------
+  # OpenAPI ↔ generated Dart client drift detection (Phase 0.2).
+  # The Dart client at `packages/api-client-dart/` ships hand-written code
+  # today (codegen is wired but the wrappers haven't been run); the spec hash
+  # checked in at SPEC_HASH locks the two together so neither can drift
+  # silently.
+  #
+  # When this job fails: regenerate or hand-update the Dart client, then
+  # update SPEC_HASH. See `packages/api-client-dart/README.md`.
+  # ---------------------------------------------------------------------------
+  openapi-codegen-drift:
+    name: OpenAPI Codegen Drift
+    runs-on: ubuntu-latest
+    needs: changes
+    if: |
+      needs.changes.outputs.openapi == 'true'
+      || needs.changes.outputs.flutter == 'true'
+      || hashFiles('packages/api-client-dart/SPEC_HASH') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify SPEC_HASH matches docs/api/openapi.yaml
+        if: hashFiles('packages/api-client-dart/SPEC_HASH') != '' && hashFiles('docs/api/openapi.yaml') != ''
         run: |
-          docker run -d --name test-api \
-            -e NODE_ENV=test \
-            -e MONGO_URI=mongodb://localhost:27017/test \
-            -e JWT_ACCESS_SECRET=ci-test-access-secret-32-chars-minimum \
-            -e JWT_REFRESH_SECRET=ci-test-refresh-secret-32-chars-minimum \
-            -p 5000:5000 \
-            reverse-match-api:${{ github.sha }}
-          sleep 3
-          docker logs test-api
-          docker stop test-api
+          set -euo pipefail
+          actual="$(sha256sum docs/api/openapi.yaml | awk '{print $1}')"
+          expected="$(tr -d '[:space:]' < packages/api-client-dart/SPEC_HASH)"
+          echo "actual   = $actual"
+          echo "expected = $expected"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::docs/api/openapi.yaml changed but packages/api-client-dart/SPEC_HASH was not updated."
+            echo "::error::Regenerate (or hand-update) the Dart client, then run:"
+            echo "::error::  sha256sum docs/api/openapi.yaml | awk '{print \$1}' > packages/api-client-dart/SPEC_HASH"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Flutter analyze + test — only runs when reverse_match/ changed.
+  # ---------------------------------------------------------------------------
+  flutter-analyze:
+    name: Flutter Analyze
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.flutter == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+        working-directory: reverse_match
+      - run: flutter analyze
+        working-directory: reverse_match
+
+  flutter-test:
+    name: Flutter Test
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.flutter == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+        working-directory: reverse_match
+      - run: flutter test
+        working-directory: reverse_match
+
+  # ---------------------------------------------------------------------------
+  # CI summary — single required check for branch protection. Stays green
+  # when downstream jobs are skipped (path filter), red on real failure.
+  # ---------------------------------------------------------------------------
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - backend-lint
+      - backend-test
+      - backend-build
+      - openapi-lint
+      - openapi-codegen-drift
+      - flutter-analyze
+      - flutter-test
+    steps:
+      - name: Fail if any required job failed
+        run: |
+          results='${{ toJson(needs) }}'
+          echo "$results"
+          echo "$results" | grep -q '"result": "failure"' && exit 1 || exit 0

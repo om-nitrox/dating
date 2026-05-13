@@ -1,2 +1,4 @@
 node_modules/
 coverage/
+# Phase 0.3: validator codegen output is regenerated from docs/api/openapi.yaml.
+src/validators/generated/

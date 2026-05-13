@@ -7,6 +7,9 @@ const { sendPush } = require('./notification.service');
 const {
   cacheGet, cacheSet, getCacheVersion, bumpCacheVersion,
 } = require('../utils/cache');
+// Resolved once from the canonical taxonomy. Used for the "show me everyone"
+// gender-preference fan-out below.
+const { GENDER: ALL_GENDERS } = require('../domain/taxonomies');
 
 const BOOST_SCORES = {
   gold: 1000,
@@ -100,10 +103,10 @@ const getFeed = async (userId, cursor, limit = 20, filters = {}) => {
   const genderPref = girl.preferences?.genderPreference;
   if (genderPref === 'men') targetGenders = ['male'];
   else if (genderPref === 'women') targetGenders = ['female'];
-  else if (genderPref === 'everyone') targetGenders = ['male', 'female', 'nonbinary'];
+  else if (genderPref === 'everyone') targetGenders = [...ALL_GENDERS];
   else if (girl.gender === 'female') targetGenders = ['male']; // default: opposite
   else if (girl.gender === 'male') targetGenders = ['female'];
-  else targetGenders = ['male', 'female', 'nonbinary'];
+  else targetGenders = [...ALL_GENDERS];
 
   const baseMatch = {
     _id: { $nin: excludeIds },

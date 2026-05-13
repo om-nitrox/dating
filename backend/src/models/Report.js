@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { REPORT_REASONS, REPORT_STATUS } = require('../domain/taxonomies');
 
 const reportSchema = new mongoose.Schema(
   {
@@ -14,7 +15,7 @@ const reportSchema = new mongoose.Schema(
     },
     reason: {
       type: String,
-      enum: ['harassment', 'spam', 'fake', 'inappropriate', 'underage', 'other'],
+      enum: REPORT_REASONS,
       required: true,
     },
     details: {
@@ -23,7 +24,7 @@ const reportSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'resolved', 'dismissed'],
+      enum: REPORT_STATUS,
       default: 'pending',
     },
     resolvedAt: {

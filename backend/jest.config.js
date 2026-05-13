@@ -9,10 +9,11 @@ module.exports = {
   maxWorkers: 1,
   testPathIgnorePatterns: ['/node_modules/', '/__tests__/helpers/'],
   coverageThreshold: {
-    // Allow a small dip during ongoing hardening — the new transaction
-    // helpers, multi-session refresh path, and gender DB-lookup branches
-    // are exercised in integration but report low cov in unit-only runs.
-    global: { lines: 60 },
+    // Phase 0.9: raised from 60 -> 65 after observability + event-bus
+    // tests landed. Target is 70; remaining gap is the legacy
+    // notification.service / upload.service code paths that need
+    // dedicated integration coverage (TODO).
+    global: { lines: 65 },
   },
   globalSetup: './__tests__/helpers/globalSetup.js',
   globalTeardown: './__tests__/helpers/globalTeardown.js',

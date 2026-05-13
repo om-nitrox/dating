@@ -40,6 +40,49 @@ services:
       retries: 3
       start_period: 15s
 
+  # BullMQ worker process (Phase 0.7).
+  # Shares the same image base as `api` (same node_modules, same src/) but
+  # runs `worker.js` instead of `server.js`. Reaches Mongo/Redis via the
+  # same compose-network DNS names.
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    ports:
+      - "${WORKER_METRICS_PORT:-9091}:9091"
+    environment:
+      - NODE_ENV=production
+      - MONGO_URI=mongodb://mongo:27017/reverse_match
+      - REDIS_URL=redis://redis:6379
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - FIREBASE_SERVICE_ACCOUNT_PATH=${FIREBASE_SERVICE_ACCOUNT_PATH}
+      - WORKER_METRICS_PORT=9091
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-5}
+      - BULLMQ_QUEUE_PREFIX=${BULLMQ_QUEUE_PREFIX:-rm}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9091/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
   mongo:
     image: mongo:7
     ports:

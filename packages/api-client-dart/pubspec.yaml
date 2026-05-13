@@ -1,0 +1,25 @@
+name: reverse_match_api
+description: >-
+  Generated REST + model layer for the Reverse Match API (OpenAPI 3.1).
+  Hand-written today (Phase 0.2); openapi_generator codegen wired in via
+  `tool/codegen.ps1` / `tool/codegen.sh` for follow-up automation.
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  # Matches Dart SDK shipped with Flutter 3.41.9 (.fvmrc).
+  sdk: ^3.5.0
+
+dependencies:
+  dio: ^5.7.0
+  meta: ^1.16.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^5.0.0
+
+  # Codegen toolchain — uncomment + `dart pub get` to regenerate models from
+  # docs/api/openapi.yaml. See README.md and tool/codegen.ps1 for usage.
+  # openapi_generator: ^6.0.0
+  # openapi_generator_annotations: ^6.0.0
+  # build_runner: ^2.4.14

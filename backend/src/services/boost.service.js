@@ -4,6 +4,7 @@ const stripe = require('../config/stripe');
 const config = require('../config');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
+const { boostActivatedTotal } = require('../observability/metrics');
 
 // Plans per BACKEND_API.md §7. `duration*` and `price*` carry both the raw
 // numeric value (frontend uses `priceCents`/`durationMinutes`) and the
@@ -108,6 +109,15 @@ const activateBoost = async (userId, tier, durationMinutes) => {
     boostLevel: tier,
     boostExpiry: expiry,
   });
+
+  // Phase 0.9: bump per-tier counter + structured log event.
+  boostActivatedTotal.labels({ tier }).inc();
+  logger.info(
+    {
+      event: 'boost.activated', userId: userId.toString(), tier, durationMinutes,
+    },
+    'boost activated',
+  );
 
   return expiry;
 };

@@ -1,0 +1,42 @@
+# Worker image (Phase 0.7).
+#
+# Near-identical to ./Dockerfile (api). Kept as a separate file rather than
+# a single multi-target Dockerfile because:
+#   - It's only two lines of divergence (EXPOSE, CMD, HEALTHCHECK).
+#   - docker-compose / k8s manifests are simpler when each image has a
+#     single intended entrypoint.
+# If a third image (e.g. a one-shot migrator) is ever needed, fold these
+# back together with a multi-stage `--target` build.
+
+# Stage 1: Dependencies
+FROM node:22-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+
+# Stage 2: Production image
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+# Security: run as non-root
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+# Create logs directory
+RUN mkdir -p /app/logs && chown appuser:appgroup /app/logs
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Remove dev files
+RUN rm -rf .env .env.* tests/ *.test.js nodemon.json
+
+USER appuser
+
+# Worker exposes a Prometheus /metrics endpoint, not the api port.
+EXPOSE 9091
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:9091/health || exit 1
+
+CMD ["node", "worker.js"]

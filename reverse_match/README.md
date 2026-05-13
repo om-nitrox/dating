@@ -1,16 +1,39 @@
 # reverse_match
 
-A new Flutter project.
+Flutter mobile client for the Reverse Match dating platform.
 
-## Getting Started
+## Setup (FVM)
 
-This project is a starting point for a Flutter application.
+The Flutter SDK version is pinned in `../.fvmrc` at the repo root — install [FVM](https://fvm.app/) and let it manage the SDK so every contributor and CI runner uses the exact same toolchain. Do **not** commit a vendored Flutter SDK.
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+# One-time, globally
+dart pub global activate fvm
+
+# From the repo root (reads .fvmrc)
+fvm install
+
+# Then, in this directory
+cd reverse_match
+fvm flutter pub get
+fvm flutter run --dart-define=ENV=development
+```
+
+If you prefer not to use FVM, install Flutter manually at the version recorded in `../.fvmrc` and substitute `flutter` for `fvm flutter` in the commands above.
+
+## Common commands
+
+```bash
+fvm flutter pub get
+fvm flutter analyze
+fvm flutter test
+fvm flutter run --dart-define=ENV=development
+fvm flutter run --dart-define=ENV=staging
+fvm flutter run --dart-define=ENV=production
+```
+
+## Resources
 
 - [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
 - [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- [Flutter docs](https://docs.flutter.dev/)

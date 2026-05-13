@@ -1,0 +1,524 @@
+asyncapi: 2.6.0
+info:
+  title: Reverse Match Realtime API
+  version: 1.0.0
+  description: |
+    Socket.IO event surface for the Reverse Match Flutter client. Mirrors the contract
+    previously documented in `BACKEND_API.md` §12.
+
+    Transport: Socket.IO over WebSocket (with HTTP long-poll fallback).
+
+    Handshake auth: the server reads the access token from either
+    `socket.handshake.headers.authorization` (`Bearer <accessToken>`) or
+    `socket.handshake.auth.token`. Either is accepted; the client typically sets both.
+
+    Rooms:
+      - personal room `<userId>` — every event targeting a single user is fanned out here.
+      - match room `<matchId>` — joined when a chat screen opens, left when it closes.
+
+    Event-name convention: kebab-case verbs. Payload field names below MUST match exactly —
+    the typed `SocketEventBus` on the client deserializes by exact name.
+
+defaultContentType: application/json
+
+servers:
+  development:
+    url: http://localhost:5000
+    protocol: ws
+    description: Local development Socket.IO endpoint
+    security:
+      - bearerAuth: []
+  production:
+    url: https://api.reversematch.app
+    protocol: wss
+    description: Production Socket.IO endpoint
+    security:
+      - bearerAuth: []
+
+channels:
+  # ====================================================================
+  # Outbound — client → server
+  # ====================================================================
+  join-room:
+    description: Client requests to join the chat room for a match (called when chat screen opens).
+    publish:
+      operationId: clientJoinRoom
+      summary: Client joins a match-scoped room
+      message:
+        $ref: '#/components/messages/JoinRoom'
+
+  leave-room:
+    description: Client leaves the chat room for a match (called when chat screen closes).
+    publish:
+      operationId: clientLeaveRoom
+      summary: Client leaves a match-scoped room
+      message:
+        $ref: '#/components/messages/LeaveRoom'
+
+  send-message:
+    description: |
+      Client sends a chat message over the socket. The server also accepts the HTTP
+      `POST /messages` fallback when the socket is disconnected; the two paths produce the
+      same `new-message` fan-out shape.
+    publish:
+      operationId: clientSendMessage
+      summary: Client sends a chat message
+      message:
+        $ref: '#/components/messages/SendMessage'
+
+  typing-start:
+    description: Local user started typing in the named match's chat.
+    publish:
+      operationId: clientTypingStart
+      summary: Typing start
+      message:
+        $ref: '#/components/messages/TypingStart'
+
+  typing-stop:
+    description: Local user stopped typing in the named match's chat.
+    publish:
+      operationId: clientTypingStop
+      summary: Typing stop
+      message:
+        $ref: '#/components/messages/TypingStop'
+
+  mark-seen:
+    description: |
+      Client marks all unread messages sent by the other participant in the named match as seen.
+      Fires the same side-effect as `PUT /messages/{matchId}/seen`.
+    publish:
+      operationId: clientMarkSeen
+      summary: Mark messages seen
+      message:
+        $ref: '#/components/messages/MarkSeen'
+
+  # ====================================================================
+  # Inbound — server → client
+  # ====================================================================
+  new-message:
+    description: A new chat message was created (via socket or HTTP fallback) and is being fanned out.
+    subscribe:
+      operationId: serverNewMessage
+      summary: New message received
+      message:
+        $ref: '#/components/messages/NewMessage'
+
+  user-typing:
+    description: |
+      The other participant started or stopped typing. The frontend auto-clears the indicator
+      after ~3 seconds if no follow-up arrives.
+    subscribe:
+      operationId: serverUserTyping
+      summary: Typing indicator
+      message:
+        $ref: '#/components/messages/UserTyping'
+
+  messages-seen:
+    description: The other participant marked your previously-unread messages as seen.
+    subscribe:
+      operationId: serverMessagesSeen
+      summary: Messages seen by the other user
+      message:
+        $ref: '#/components/messages/MessagesSeen'
+
+  new-match:
+    description: A new match was created (e.g. a boy accepted the girl's like).
+    subscribe:
+      operationId: serverNewMatch
+      summary: New match
+      message:
+        $ref: '#/components/messages/NewMatch'
+
+  new-like:
+    description: A new like landed in the (boy's) queue.
+    subscribe:
+      operationId: serverNewLike
+      summary: New like
+      message:
+        $ref: '#/components/messages/NewLike'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: httpApiKey
+      name: Authorization
+      in: header
+      description: |
+        `Authorization: Bearer <accessToken>`. Set on the Socket.IO handshake's
+        `extraHeaders`. The server also accepts the same JWT under
+        `socket.handshake.auth.token` as a fallback for environments where the handshake
+        headers cannot be customized.
+
+  messages:
+    JoinRoom:
+      name: joinRoom
+      payload:
+        $ref: '#/components/schemas/MatchIdString'
+    LeaveRoom:
+      name: leaveRoom
+      payload:
+        $ref: '#/components/schemas/MatchIdString'
+    SendMessage:
+      name: sendMessage
+      payload:
+        $ref: '#/components/schemas/SendMessagePayload'
+    TypingStart:
+      name: typingStart
+      payload:
+        $ref: '#/components/schemas/MatchIdString'
+    TypingStop:
+      name: typingStop
+      payload:
+        $ref: '#/components/schemas/MatchIdString'
+    MarkSeen:
+      name: markSeen
+      payload:
+        $ref: '#/components/schemas/MarkSeenPayload'
+    NewMessage:
+      name: newMessage
+      payload:
+        $ref: '#/components/schemas/NewMessagePayload'
+    UserTyping:
+      name: userTyping
+      payload:
+        $ref: '#/components/schemas/UserTypingPayload'
+    MessagesSeen:
+      name: messagesSeen
+      payload:
+        $ref: '#/components/schemas/MessagesSeenPayload'
+    NewMatch:
+      name: newMatch
+      payload:
+        $ref: '#/components/schemas/NewMatchPayload'
+    NewLike:
+      name: newLike
+      payload:
+        $ref: '#/components/schemas/NewLikePayload'
+
+  schemas:
+    # ---- Shared scalars (mirror openapi.yaml — kept in sync by hand for now) ----
+    ObjectId:
+      type: string
+      pattern: '^[a-fA-F0-9]{24}$'
+      description: 24-character MongoDB ObjectId hex string.
+
+    IsoDateTime:
+      type: string
+      format: date-time
+      description: ISO-8601 UTC timestamp.
+
+    MatchIdString:
+      type: string
+      description: |
+        A bare match ID (24-char ObjectId hex) sent as the *raw payload*, NOT wrapped in
+        an object. Used by `join-room`, `leave-room`, `typing-start`, `typing-stop`.
+      pattern: '^[a-fA-F0-9]{24}$'
+
+    # ---- Outbound payloads ----
+    SendMessagePayload:
+      type: object
+      required: [matchId, text]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/ObjectId'
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    MarkSeenPayload:
+      type: object
+      required: [matchId]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/ObjectId'
+
+    # ---- Inbound payloads ----
+    NewMessagePayload:
+      type: object
+      required: [matchId, message]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/ObjectId'
+        message:
+          $ref: '#/components/schemas/MessageModel'
+
+    UserTypingPayload:
+      type: object
+      required: [matchId, userId, isTyping]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/ObjectId'
+        userId:
+          $ref: '#/components/schemas/ObjectId'
+          description: The user who is typing — typically the *other* participant.
+        isTyping:
+          type: boolean
+
+    MessagesSeenPayload:
+      type: object
+      required: [matchId, seenAt]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/ObjectId'
+        seenAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    NewMatchPayload:
+      type: object
+      required: [match]
+      properties:
+        match:
+          $ref: '#/components/schemas/MatchModel'
+
+    NewLikePayload:
+      type: object
+      required: [fromUserId]
+      properties:
+        fromUserId:
+          $ref: '#/components/schemas/ObjectId'
+
+    # ---- Duplicated domain shapes from openapi.yaml ----
+    # Kept duplicated rather than $ref-ing across documents because AsyncAPI 2.6 tooling
+    # has uneven cross-document $ref support. Phase 0.2/0.3 codegen reads both files;
+    # any change to MessageModel/MatchModel/UserModel must land in BOTH docs.
+    Photo:
+      type: object
+      required: [url, publicId]
+      properties:
+        url:
+          type: string
+          format: uri
+        publicId:
+          type: string
+
+    Prompt:
+      type: object
+      required: [question, answer]
+      properties:
+        question:
+          type: string
+        answer:
+          type: string
+
+    Vices:
+      type: object
+      properties:
+        drinking:
+          type: string
+          enum: [yes, sometimes, rarely, no, prefer_not_to_say]
+        smoking:
+          type: string
+          enum: [yes, sometimes, rarely, no, prefer_not_to_say]
+        marijuana:
+          type: string
+          enum: [yes, sometimes, rarely, no, prefer_not_to_say]
+        drugs:
+          type: string
+          enum: [yes, sometimes, rarely, no, prefer_not_to_say]
+
+    Location:
+      type: object
+      required: [coordinates]
+      properties:
+        coordinates:
+          type: array
+          description: GeoJSON `[longitude, latitude]`.
+          minItems: 2
+          maxItems: 2
+          items:
+            type: number
+        city:
+          type: string
+        state:
+          type: string
+
+    Preferences:
+      type: object
+      properties:
+        ageMin:
+          type: integer
+          minimum: 18
+          maximum: 100
+        ageMax:
+          type: integer
+          minimum: 18
+          maximum: 100
+        maxDistance:
+          type: integer
+          minimum: 1
+        genderPreference:
+          type: string
+          enum: [men, women, everyone]
+
+    UserModel:
+      type: object
+      required: [_id]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        age:
+          type: integer
+          minimum: 18
+        dob:
+          $ref: '#/components/schemas/IsoDateTime'
+        gender:
+          type: string
+          enum: [male, female, nonbinary]
+        pronouns:
+          type: array
+          items:
+            type: string
+        orientation:
+          type: array
+          items:
+            type: string
+        bio:
+          type: string
+          maxLength: 300
+        exercise:
+          type: string
+          enum: [active, sometimes, never, prefer_not_to_say]
+        zodiac:
+          type: string
+          enum:
+            - aries
+            - taurus
+            - gemini
+            - cancer
+            - leo
+            - virgo
+            - libra
+            - scorpio
+            - sagittarius
+            - capricorn
+            - aquarius
+            - pisces
+        interests:
+          type: array
+          items:
+            type: string
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Photo'
+        prompts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Prompt'
+        height:
+          type: integer
+        ethnicity:
+          type: array
+          items:
+            type: string
+        children:
+          type: string
+          enum: [have, dont_have, prefer_not_to_say]
+        familyPlans:
+          type: string
+          enum: [want, dont_want, open, not_sure, prefer_not_to_say]
+        hometown:
+          type: string
+        jobTitle:
+          type: string
+        workplace:
+          type: string
+        education:
+          type: string
+        religion:
+          type: string
+        politics:
+          type: string
+        languages:
+          type: array
+          items:
+            type: string
+        datingIntentions:
+          type: string
+          enum:
+            - life_partner
+            - long_term
+            - long_term_open_short
+            - short_term_open_long
+            - short_term
+            - new_friends
+            - figuring_out
+        relationshipType:
+          type: string
+          enum: [monogamy, non_monogamy, open_to_exploring, prefer_not_to_say]
+        vices:
+          $ref: '#/components/schemas/Vices'
+        location:
+          $ref: '#/components/schemas/Location'
+        preferences:
+          $ref: '#/components/schemas/Preferences'
+        daysWithoutMatch:
+          type: integer
+          minimum: 0
+        boostLevel:
+          type: string
+          enum: [none, bronze, silver, gold]
+        isProfileComplete:
+          type: boolean
+        isVerified:
+          type: boolean
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    MessageModel:
+      type: object
+      required: [_id, matchId, sender, text, seen, createdAt]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        matchId:
+          $ref: '#/components/schemas/ObjectId'
+        sender:
+          $ref: '#/components/schemas/ObjectId'
+        text:
+          type: string
+        seen:
+          type: boolean
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    MatchLastMessage:
+      type: object
+      required: [text, sender, seen, createdAt]
+      properties:
+        text:
+          type: string
+        sender:
+          $ref: '#/components/schemas/ObjectId'
+        seen:
+          type: boolean
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    MatchModel:
+      type: object
+      required: [_id, users, unreadCount, createdAt]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        users:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/UserModel'
+        lastMessage:
+          oneOf:
+            - $ref: '#/components/schemas/MatchLastMessage'
+            - type: 'null'
+        unreadCount:
+          type: integer
+          minimum: 0
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'

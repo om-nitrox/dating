@@ -52,6 +52,11 @@ dependencies:
   permission_handler: ^11.3.1
   url_launcher: ^6.3.1
 
+  # Generated REST + model layer (Phase 0.2). Path dependency — picked up by
+  # `melos bootstrap` since `packages/**` is listed in melos.yaml.
+  reverse_match_api:
+    path: ../packages/api-client-dart
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

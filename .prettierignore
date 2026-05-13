@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+build/
+**/dist/
+**/build/
+**/coverage/
+
+# De-vendored Flutter SDK (defensive: directory is also in .gitignore)
+flutter/
+
+# Flutter app build / generated artifacts
+reverse_match/build/
+reverse_match/.dart_tool/
+reverse_match/.flutter-plugins
+reverse_match/.flutter-plugins-dependencies
+reverse_match/ios/
+reverse_match/android/
+reverse_match/macos/
+reverse_match/linux/
+reverse_match/windows/
+reverse_match/web/
+
+# Generated Dart files
+**/*.g.dart
+**/*.freezed.dart
+**/*.config.dart
+**/*.mocks.dart
+
+# Lockfiles (let the tool format these its own way)
+**/package-lock.json
+**/pubspec.lock
+**/yarn.lock
+
+# Env / secrets
+**/.env
+**/.env.*
+
+# Backend generated/large
+backend/coverage/
+backend/logs/
+
+# Git / CI metadata
+.git/
+.github/
+.husky/_/

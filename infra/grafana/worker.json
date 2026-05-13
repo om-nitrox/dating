@@ -1,0 +1,137 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Phase 0.9: Reverse Match worker service dashboard. Scraped from <worker>:9091/metrics.",
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "uid": "rm-worker",
+  "title": "Reverse Match — Worker",
+  "tags": ["reverse-match", "worker", "phase-0.9"],
+  "timezone": "UTC",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Job throughput (jobs/sec, by queue + job)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (queue, job) (rate(job_processed_total[1m]))",
+          "legendFormat": "{{queue}}/{{job}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Job failure rate (%)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.20 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (queue, job) (rate(job_processed_total{status=\"failed\"}[5m])) / clamp_min(sum by (queue, job) (rate(job_processed_total[5m])), 1e-9)",
+          "legendFormat": "{{queue}}/{{job}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Job p95 duration (s, per job)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, job) (rate(job_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{job}} p95"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.50, sum by (le, job) (rate(job_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{job}} p50"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Total jobs processed (cumulative, by status)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (job_processed_total)",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Event loop lag (s)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "nodejs_eventloop_lag_seconds",
+          "legendFormat": "lag"
+        }
+      ]
+    }
+  ]
+}

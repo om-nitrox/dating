@@ -1,6 +1,7 @@
 const Message = require('../models/Message');
 const Match = require('../models/Match');
 const AppError = require('../utils/AppError');
+const logger = require('../utils/logger');
 const { sendPush } = require('./notification.service');
 
 const MAX_PAGE_LIMIT = 100;
@@ -68,6 +69,17 @@ const sendMessage = async (matchId, senderId, text) => {
       matchId: matchId.toString(),
     });
   }
+
+  // Phase 0.9: structured-log convention — `message.sent`.
+  logger.info(
+    {
+      event: 'message.sent',
+      matchId: matchId.toString(),
+      senderId: senderId.toString(),
+      messageId: message._id.toString(),
+    },
+    'message sent',
+  );
 
   return { message, match };
 };

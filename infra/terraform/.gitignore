@@ -1,0 +1,12 @@
+# Terraform — never commit these
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+crash.log
+crash.*.log
+terraform.tfvars
+*.auto.tfvars
+*.tfplan
+tfplan
