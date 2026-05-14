@@ -1,14 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/network/dio_client.dart';
+import '../../../../core/network/api_result.dart';
 import '../../../../core/socket/socket_service.dart';
 import '../../../../core/storage/secure_storage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../shared/models/message_model.dart';
+import '../../data/chat_repository.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String matchId;
@@ -56,26 +56,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _loadMessages() async {
-    try {
-      final dio = ref.read(dioProvider);
-      final response = await dio.get(
-        ApiEndpoints.messages(widget.matchId),
-        queryParameters: {'page': 1, 'limit': AppConstants.messagePageSize},
-      );
-      final messages = (response.data['messages'] as List)
-          .map((m) => MessageModel.fromJson(m))
-          .toList();
-      _hasMore = response.data['hasMore'] ?? false;
-      _currentPage = 1;
-      setState(() {
-        _messages.clear();
-        _messages.addAll(messages);
-        _isLoading = false;
-      });
-      _scrollToBottom();
-      _markSeenViaHttp();
-    } catch (e) {
-      setState(() => _isLoading = false);
+    final repo = ref.read(chatRepositoryProvider);
+    final result = await repo.getMessages(
+      widget.matchId,
+      page: 1,
+      limit: AppConstants.messagePageSize,
+    );
+    switch (result) {
+      case Success(:final data):
+        _hasMore = data.hasMore;
+        _currentPage = 1;
+        if (!mounted) return;
+        setState(() {
+          _messages.clear();
+          _messages.addAll(data.messages);
+          _isLoading = false;
+        });
+        _scrollToBottom();
+        _markSeenViaHttp();
+      case Failure():
+        if (!mounted) return;
+        setState(() => _isLoading = false);
     }
   }
 
@@ -83,45 +84,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (_isLoadingMore || !_hasMore) return;
     setState(() => _isLoadingMore = true);
 
-    try {
-      final dio = ref.read(dioProvider);
-      final response = await dio.get(
-        ApiEndpoints.messages(widget.matchId),
-        queryParameters: {
-          'page': _currentPage + 1,
-          'limit': AppConstants.messagePageSize,
-        },
-      );
-      final olderMessages = (response.data['messages'] as List)
-          .map((m) => MessageModel.fromJson(m))
-          .toList();
-      _hasMore = response.data['hasMore'] ?? false;
-      _currentPage++;
+    final repo = ref.read(chatRepositoryProvider);
+    final result = await repo.getMessages(
+      widget.matchId,
+      page: _currentPage + 1,
+      limit: AppConstants.messagePageSize,
+    );
+    switch (result) {
+      case Success(:final data):
+        _hasMore = data.hasMore;
+        _currentPage++;
 
-      // Preserve scroll position when prepending older messages
-      final oldOffset = _scrollController.offset;
-      setState(() {
-        _messages.insertAll(0, olderMessages);
-        _isLoadingMore = false;
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.jumpTo(
-            oldOffset + olderMessages.length * 60.0, // Approximate height
-          );
-        }
-      });
-    } catch (e) {
-      setState(() => _isLoadingMore = false);
+        // Preserve scroll position when prepending older messages.
+        final oldOffset = _scrollController.offset;
+        if (!mounted) return;
+        setState(() {
+          _messages.insertAll(0, data.messages);
+          _isLoadingMore = false;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.jumpTo(
+              oldOffset + data.messages.length * 60.0, // Approximate height
+            );
+          }
+        });
+      case Failure():
+        if (!mounted) return;
+        setState(() => _isLoadingMore = false);
     }
   }
 
   /// Mark messages as seen via HTTP as a fallback for when socket isn't connected.
   Future<void> _markSeenViaHttp() async {
-    try {
-      final dio = ref.read(dioProvider);
-      await dio.put(ApiEndpoints.markSeen(widget.matchId));
-    } catch (_) {}
+    await ref.read(chatRepositoryProvider).markSeen(widget.matchId);
   }
 
   void _setupSocket() {

@@ -1,85 +1,53 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/extensions/context_extensions.dart';
-import '../../../../core/network/dio_client.dart';
+import '../../../../core/network/api_result.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../data/boost_repository.dart';
 
-final boostPlansProvider = FutureProvider.autoDispose<List<BoostPlan>>((ref) async {
-  final dio = ref.read(dioProvider);
-  final response = await dio.get(ApiEndpoints.boostPlans);
-  return (response.data['plans'] as List)
-      .map((p) => BoostPlan.fromJson(p))
-      .toList();
+// `BoostPlan` previously lived in this file. It moved to
+// `data/boost_repository.dart` (Phase 1.8). No external imports of it
+// were found, so we don't re-export — new code should import from
+// `data/boost_repository.dart` directly.
+
+final boostPlansProvider =
+    FutureProvider.autoDispose<List<BoostPlan>>((ref) async {
+  final repo = ref.read(boostRepositoryProvider);
+  final result = await repo.getPlans();
+  switch (result) {
+    case Success(:final data):
+      return data;
+    case Failure(:final exception):
+      throw exception;
+  }
 });
-
-class BoostPlan {
-  final String tier;
-  final int price; // in cents
-  final int duration;
-  final String label;
-
-  BoostPlan({
-    required this.tier,
-    required this.price,
-    required this.duration,
-    required this.label,
-  });
-
-  factory BoostPlan.fromJson(Map<String, dynamic> json) {
-    return BoostPlan(
-      tier: json['tier'] ?? '',
-      price: json['price'] ?? 0,
-      duration: json['duration'] ?? 0,
-      label: json['label'] ?? '',
-    );
-  }
-
-  String get priceFormatted => '\$${(price / 100).toStringAsFixed(2)}';
-
-  Color get color {
-    switch (tier) {
-      case 'gold':
-        return AppColors.gold;
-      case 'silver':
-        return AppColors.silver;
-      case 'bronze':
-        return AppColors.bronze;
-      default:
-        return Colors.grey;
-    }
-  }
-}
 
 class BoostScreen extends ConsumerWidget {
   const BoostScreen({super.key});
 
-  Future<void> _purchaseBoost(BuildContext context, WidgetRef ref, String tier) async {
-    try {
-      final dio = ref.read(dioProvider);
-      final response = await dio.post(
-        ApiEndpoints.purchaseBoost,
-        data: {'tier': tier},
-      );
-
-      final url = response.data['url'] as String?;
-      if (url != null) {
-        final uri = Uri.parse(url);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } else {
-          if (context.mounted) {
-            context.showSnackBar('Could not open payment page', isError: true);
+  Future<void> _purchaseBoost(
+      BuildContext context, WidgetRef ref, String tier) async {
+    final repo = ref.read(boostRepositoryProvider);
+    final result = await repo.purchase(tier);
+    switch (result) {
+      case Success(:final data):
+        final url = data;
+        if (url.isNotEmpty) {
+          final uri = Uri.parse(url);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } else {
+            if (context.mounted) {
+              context.showSnackBar('Could not open payment page',
+                  isError: true);
+            }
           }
         }
-      }
-    } on DioException catch (e) {
-      if (context.mounted) {
-        final msg = e.response?.data?['error']?['message'] ?? 'Purchase failed';
-        context.showSnackBar(msg, isError: true);
-      }
+      case Failure(:final exception):
+        if (context.mounted) {
+          context.showSnackBar(exception.message, isError: true);
+        }
     }
   }
 

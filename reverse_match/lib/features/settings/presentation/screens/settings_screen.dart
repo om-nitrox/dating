@@ -1,17 +1,16 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart' as geo;
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/extensions/context_extensions.dart';
 import '../../../../core/network/api_result.dart';
-import '../../../../core/network/dio_client.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../account/data/account_repository.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../profile_setup/data/profile_repository.dart';
+import '../../../config/data/config_repository.dart';
+import '../../../profile/data/profile_repository.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -89,26 +88,33 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _openLegalUrl(BuildContext context, WidgetRef ref, String key) async {
-    try {
-      final dio = ref.read(dioProvider);
-      final response = await dio.get(ApiEndpoints.appConfig);
-      final url = response.data[key] as String?;
+  Future<void> _openLegalUrl(
+      BuildContext context, WidgetRef ref, String key) async {
+    final repo = ref.read(configRepositoryProvider);
+    final result = await repo.getConfig();
 
-      if (url != null && url.isNotEmpty) {
-        final uri = Uri.parse(url);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
+    switch (result) {
+      case Success(:final data):
+        final url = switch (key) {
+          'privacyPolicyUrl' => data.privacyPolicyUrl,
+          'termsOfServiceUrl' => data.termsOfServiceUrl,
+          _ => '',
+        };
+
+        if (url.isNotEmpty) {
+          final uri = Uri.parse(url);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        } else {
+          if (context.mounted) {
+            context.showSnackBar('Not available yet', isError: true);
+          }
         }
-      } else {
+      case Failure():
         if (context.mounted) {
-          context.showSnackBar('Not available yet', isError: true);
+          context.showSnackBar('Failed to load', isError: true);
         }
-      }
-    } catch (e) {
-      if (context.mounted) {
-        context.showSnackBar('Failed to load', isError: true);
-      }
     }
   }
 
@@ -196,32 +202,29 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _deleteAccount(BuildContext context, WidgetRef ref) async {
-    try {
-      if (context.mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => const Center(child: CircularProgressIndicator()),
-        );
-      }
-
-      final dio = ref.read(dioProvider);
-      await dio.delete(
-        ApiEndpoints.deleteAccount,
-        data: {'confirmation': 'DELETE_MY_ACCOUNT'},
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
       );
+    }
 
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        context.showSnackBar('Account deleted');
-      }
-      await ref.read(authProvider.notifier).logout();
-    } on DioException catch (e) {
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        final msg = e.response?.data?['error']?['message'] ?? 'Failed to delete account';
-        context.showSnackBar(msg, isError: true);
-      }
+    final repo = ref.read(accountRepositoryProvider);
+    final result = await repo.deleteAccount('DELETE_MY_ACCOUNT');
+
+    switch (result) {
+      case Success():
+        if (context.mounted) {
+          Navigator.of(context).pop();
+          context.showSnackBar('Account deleted');
+        }
+        await ref.read(authProvider.notifier).logout();
+      case Failure(:final exception):
+        if (context.mounted) {
+          Navigator.of(context).pop();
+          context.showSnackBar(exception.message, isError: true);
+        }
     }
   }
 }

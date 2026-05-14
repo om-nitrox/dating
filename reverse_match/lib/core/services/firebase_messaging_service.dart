@@ -1,16 +1,14 @@
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../constants/api_endpoints.dart';
-import '../network/dio_client.dart';
+import '../../features/profile/data/profile_repository.dart';
 import '../storage/secure_storage_service.dart';
 
 final fcmServiceProvider = Provider<FcmService>((ref) {
   return FcmService(
-    ref.read(dioProvider),
+    ref.read(profileRepositoryProvider),
     ref.read(secureStorageProvider),
   );
 });
@@ -23,11 +21,11 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class FcmService {
-  final Dio _dio;
+  final ProfileRepository _profile;
   final SecureStorageService _storage;
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
-  FcmService(this._dio, this._storage);
+  FcmService(this._profile, this._storage);
 
   /// Initialize FCM: request permissions, register token, wire handlers.
   Future<void> initAndRegister() async {
@@ -70,10 +68,7 @@ class FcmService {
       final stored = await _storage.getAccessToken();
       if (stored == null) return;
       final deviceId = await _storage.getOrCreateDeviceId();
-      await _dio.post(
-        ApiEndpoints.fcmToken,
-        data: {'token': token, 'deviceId': deviceId},
-      );
+      await _profile.registerFcmToken(token: token, deviceId: deviceId);
       debugPrint('FCM token registered');
     } catch (e) {
       debugPrint('FCM token registration failed: $e');

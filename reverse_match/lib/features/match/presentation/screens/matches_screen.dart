@@ -1,20 +1,22 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/extensions/context_extensions.dart';
-import '../../../../core/network/dio_client.dart';
+import '../../../../core/network/api_result.dart';
 import '../../../../core/socket/socket_service.dart';
 import '../../../../core/storage/secure_storage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../shared/models/match_model.dart';
 import '../../../../shared/widgets/empty_state_widget.dart';
+import '../../data/match_repository.dart';
 
 final matchesProvider =
     StateNotifierProvider<MatchesNotifier, MatchesState>((ref) {
-  return MatchesNotifier(ref.read(dioProvider), ref.read(socketServiceProvider));
+  return MatchesNotifier(
+    ref.read(matchRepositoryProvider),
+    ref.read(socketServiceProvider),
+  );
 });
 
 class MatchesState {
@@ -50,10 +52,10 @@ class MatchesState {
 }
 
 class MatchesNotifier extends StateNotifier<MatchesState> {
-  final Dio _dio;
+  final MatchRepository _repo;
   final SocketService _socket;
 
-  MatchesNotifier(this._dio, this._socket) : super(const MatchesState()) {
+  MatchesNotifier(this._repo, this._socket) : super(const MatchesState()) {
     loadMatches();
     _listenForSocketEvents();
   }
@@ -99,37 +101,29 @@ class MatchesNotifier extends StateNotifier<MatchesState> {
     final page = loadMore ? state.currentPage + 1 : 1;
     state = state.copyWith(isLoading: true);
 
-    try {
-      final response = await _dio.get(
-        ApiEndpoints.matches,
-        queryParameters: {'page': page, 'limit': 30},
-      );
-      final data = response.data;
-      final matchesList = (data['matches'] as List? ?? [])
-          .map((m) => MatchModel.fromJson(m))
-          .toList();
-      final hasMore = data['hasMore'] ?? false;
-
-      if (loadMore) {
+    final result = await _repo.listMatches(page: page, limit: 30);
+    switch (result) {
+      case Success(:final data):
+        if (loadMore) {
+          state = state.copyWith(
+            matches: [...state.matches, ...data.matches],
+            isLoading: false,
+            currentPage: page,
+            hasMore: data.hasMore,
+          );
+        } else {
+          state = state.copyWith(
+            matches: data.matches,
+            isLoading: false,
+            currentPage: 1,
+            hasMore: data.hasMore,
+          );
+        }
+      case Failure(:final exception):
         state = state.copyWith(
-          matches: [...state.matches, ...matchesList],
           isLoading: false,
-          currentPage: page,
-          hasMore: hasMore,
+          error: exception.message,
         );
-      } else {
-        state = state.copyWith(
-          matches: matchesList,
-          isLoading: false,
-          currentPage: 1,
-          hasMore: hasMore,
-        );
-      }
-    } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Failed to load matches',
-      );
     }
   }
 
@@ -139,14 +133,15 @@ class MatchesNotifier extends StateNotifier<MatchesState> {
   }
 
   Future<String?> deleteMatch(String matchId) async {
-    try {
-      await _dio.delete(ApiEndpoints.deleteMatch(matchId));
-      state = state.copyWith(
-        matches: state.matches.where((m) => m.id != matchId).toList(),
-      );
-      return null;
-    } on DioException catch (e) {
-      return e.response?.data?['error']?['message'] ?? 'Failed to unmatch';
+    final result = await _repo.unmatch(matchId);
+    switch (result) {
+      case Success():
+        state = state.copyWith(
+          matches: state.matches.where((m) => m.id != matchId).toList(),
+        );
+        return null;
+      case Failure(:final exception):
+        return exception.message;
     }
   }
 
