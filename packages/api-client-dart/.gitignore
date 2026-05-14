@@ -1,0 +1,11 @@
+# Dart / Flutter build outputs and caches — never commit.
+.dart_tool/
+.pub/
+.pub-cache/
+build/
+pubspec.lock
+*.iml
+.idea/
+.vscode/
+coverage/
+doc/api/
