@@ -10,7 +10,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "prepare": "husky install",
+    "prepare": "husky || true",
     "format": "prettier --write \"**/*.{js,json,yaml,yml,md}\"",
     "format:check": "prettier --check \"**/*.{js,json,yaml,yml,md}\"",
     "lint:openapi": "spectral lint docs/api/openapi.yaml docs/api/asyncapi.yaml --ruleset .spectral.yaml"
