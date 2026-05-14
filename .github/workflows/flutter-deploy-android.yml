@@ -1,0 +1,99 @@
+name: Flutter Deploy Android
+
+# ---------------------------------------------------------------------------
+# Builds a signed AAB and uploads it to Play Store Internal Testing track.
+#
+# Triggers on git tags matching v* (e.g. v1.0.0, v1.2.3-rc1). Run a tagged
+# release with:
+#   git tag v1.0.0 && git push origin v1.0.0
+#
+# Required GitHub Secrets (Repo Settings → Secrets and variables → Actions):
+#   KEYSTORE_BASE64           — base64 of reverse-match-release.jks
+#                               (Windows: certutil -encode ks.jks ks.b64 then strip header/footer)
+#                               (mac/linux: base64 -i ks.jks)
+#   KEYSTORE_PASSWORD         — store password
+#   KEY_PASSWORD              — key password
+#   KEY_ALIAS                 — key alias (e.g. reverse-match)
+#   GOOGLE_PLAY_SERVICE_ACCOUNT — JSON content of the Play Console service account
+#   API_BASE_URL              — e.g. https://api.reversematch.app
+#   SENTRY_DSN_FLUTTER        — Flutter Sentry DSN
+#   GOOGLE_CLIENT_ID          — OAuth Web Client ID
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: flutter-deploy-android
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    name: Build AAB and upload to Play Store
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Melos
+        run: dart pub global activate melos
+
+      - name: Melos bootstrap
+        run: melos bootstrap
+
+      - name: Write .env.production
+        working-directory: reverse_match
+        run: |
+          {
+            echo "API_BASE_URL=${{ secrets.API_BASE_URL }}"
+            echo "SENTRY_DSN=${{ secrets.SENTRY_DSN_FLUTTER }}"
+            echo "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}"
+          } > .env.production
+          # Sentry/Sign-In libraries crash if .env is missing entirely; keep
+          # a duplicate at .env so any code path that ignores --dart-define
+          # still finds something.
+          cp .env.production .env
+
+      - name: Decode signing keystore
+        working-directory: reverse_match/android
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > reverse-match.jks
+          {
+            echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
+            echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
+            echo "keyAlias=${{ secrets.KEY_ALIAS }}"
+            echo "storeFile=$(pwd)/reverse-match.jks"
+          } > key.properties
+
+      - name: Build release AAB
+        working-directory: reverse_match
+        run: flutter build appbundle --release --dart-define=ENV=production
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reverse-match-${{ github.ref_name }}.aab
+          path: reverse_match/build/app/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+      - name: Publish to Play Store (internal track)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
+          packageName: com.reversematch.reverse_match
+          releaseFiles: reverse_match/build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed

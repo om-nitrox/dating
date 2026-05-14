@@ -1,0 +1,89 @@
+name: Flutter Deploy iOS
+
+# ---------------------------------------------------------------------------
+# Builds a signed IPA and uploads it to TestFlight.
+#
+# Triggers on git tags matching v*.
+#
+# Required GitHub Secrets:
+#   IOS_DISTRIBUTION_CERT_P12         — base64 of the .p12 distribution cert
+#   IOS_DISTRIBUTION_CERT_PASSWORD    — password set when exporting the .p12
+#   APPSTORE_ISSUER_ID                — App Store Connect API issuer UUID
+#   APPSTORE_API_KEY_ID               — App Store Connect API key ID
+#   APPSTORE_API_PRIVATE_KEY          — contents of the .p8 private key
+#   API_BASE_URL                      — e.g. https://api.reversematch.app
+#   SENTRY_DSN_FLUTTER                — Flutter Sentry DSN
+#   GOOGLE_CLIENT_ID                  — OAuth Web Client ID
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: flutter-deploy-ios
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    name: Build IPA and upload to TestFlight
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Melos
+        run: dart pub global activate melos
+
+      - name: Melos bootstrap
+        run: melos bootstrap
+
+      - name: Write .env.production
+        working-directory: reverse_match
+        run: |
+          {
+            echo "API_BASE_URL=${{ secrets.API_BASE_URL }}"
+            echo "SENTRY_DSN=${{ secrets.SENTRY_DSN_FLUTTER }}"
+            echo "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}"
+          } > .env.production
+          cp .env.production .env
+
+      - name: Import distribution certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.IOS_DISTRIBUTION_CERT_P12 }}
+          p12-password: ${{ secrets.IOS_DISTRIBUTION_CERT_PASSWORD }}
+
+      - name: Download provisioning profiles
+        uses: apple-actions/download-provisioning-profiles@v3
+        with:
+          bundle-id: com.reversematch.reverse_match
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Build release IPA
+        working-directory: reverse_match
+        run: flutter build ipa --release --dart-define=ENV=production --export-options-plist=ios/ExportOptions.plist
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reverse-match-${{ github.ref_name }}.ipa
+          path: reverse_match/build/ios/ipa/*.ipa
+          if-no-files-found: error
+
+      - name: Upload to TestFlight
+        uses: apple-actions/upload-testflight-build@v1
+        with:
+          app-path: reverse_match/build/ios/ipa/reverse_match.ipa
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
