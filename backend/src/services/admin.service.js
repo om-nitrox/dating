@@ -110,6 +110,127 @@ const getAdminUserProfile = async (userId) => {
   };
 };
 
+/**
+ * Phase 1.3 — Admin selfie review queue.
+ *
+ * `listPendingSelfies` returns users with `selfieReviewStatus === 'pending'`,
+ * page-paginated (consistent with /matches and /queue pagination style).
+ *
+ * `approveSelfie` flips `isVerified = true` and `selfieReviewStatus =
+ * 'approved'`. This is the canonical gate for the "verified" badge.
+ *
+ * `rejectSelfie` flips `selfieReviewStatus = 'rejected'` and (best-effort)
+ * pushes an FCM notification to the user explaining the next step.
+ */
+const listPendingSelfies = async (page = 1, limit = 20) => {
+  const safeLimit = Math.min(Math.max(limit, 1), 100);
+  const skip = (page - 1) * safeLimit;
+
+  const filter = { selfieReviewStatus: 'pending' };
+
+  const [users, total] = await Promise.all([
+    User.find(filter)
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .select('_id name email photos selfiePhoto isVerified selfieReviewStatus updatedAt'),
+    User.countDocuments(filter),
+  ]);
+
+  return {
+    users,
+    page,
+    limit: safeLimit,
+    total,
+    hasMore: skip + users.length < total,
+  };
+};
+
+const approveSelfie = async (targetUserId, adminId) => {
+  const user = await User.findById(targetUserId);
+  if (!user) throw new AppError('User not found', 404);
+
+  if (user.selfieReviewStatus !== 'pending') {
+    throw new AppError(
+      `Selfie is not pending review (current state: ${user.selfieReviewStatus || 'none'})`,
+      400,
+      'NOT_PENDING_REVIEW',
+    );
+  }
+
+  user.isVerified = true;
+  user.selfieReviewStatus = 'approved';
+  await user.save();
+
+  logger.info(
+    {
+      event: 'admin.selfie.approved',
+      targetUserId: String(targetUserId),
+      adminId: String(adminId),
+    },
+    'selfie approved by admin',
+  );
+
+  // Best-effort FCM heads-up to the user.
+  try {
+    sendPush(
+      targetUserId,
+      'You are verified!',
+      'Your selfie was approved. You now have the verified badge on your profile.',
+      { type: 'selfie_approved' },
+    );
+  } catch (_) { /* noop */ }
+
+  return { userId: String(targetUserId), isVerified: true, selfieReviewStatus: 'approved' };
+};
+
+const rejectSelfie = async (targetUserId, adminId, reason) => {
+  const user = await User.findById(targetUserId);
+  if (!user) throw new AppError('User not found', 404);
+
+  if (user.selfieReviewStatus !== 'pending') {
+    throw new AppError(
+      `Selfie is not pending review (current state: ${user.selfieReviewStatus || 'none'})`,
+      400,
+      'NOT_PENDING_REVIEW',
+    );
+  }
+
+  user.selfieReviewStatus = 'rejected';
+  user.isVerified = false;
+  await user.save();
+
+  logger.info(
+    {
+      event: 'admin.selfie.rejected',
+      targetUserId: String(targetUserId),
+      adminId: String(adminId),
+      reason: reason ? String(reason).slice(0, 200) : null,
+    },
+    'selfie rejected by admin',
+  );
+
+  try {
+    sendPush(
+      targetUserId,
+      'Selfie verification rejected',
+      reason
+        ? `Please re-upload your selfie. Reason: ${String(reason).slice(0, 120)}`
+        : 'Please re-upload your selfie to get verified.',
+      { type: 'selfie_rejected' },
+    );
+  } catch (_) { /* noop */ }
+
+  return { userId: String(targetUserId), selfieReviewStatus: 'rejected' };
+};
+
 module.exports = {
-  listReports, resolveReport, banUserById, getAdminUserProfile,
+  listReports,
+  resolveReport,
+  banUserById,
+  getAdminUserProfile,
+  // Phase 1.3 — selfie review queue
+  listPendingSelfies,
+  approveSelfie,
+  rejectSelfie,
 };

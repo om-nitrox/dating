@@ -14,7 +14,12 @@
     "test": "jest --coverage --forceExit",
     "test:unit": "jest --testPathPattern=unit --forceExit",
     "test:integration": "jest --testPathPattern=integration --forceExit",
-    "codegen:validators": "node scripts/codegen-validators.js"
+    "codegen:validators": "node scripts/codegen-validators.js",
+    "check:env": "node scripts/check-env.js",
+    "migrate": "migrate-mongo up -f migrate-mongo-config.js",
+    "migrate:down": "migrate-mongo down -f migrate-mongo-config.js",
+    "migrate:status": "migrate-mongo status -f migrate-mongo-config.js",
+    "migrate:create": "migrate-mongo create -f migrate-mongo-config.js"
   },
   "keywords": [],
   "author": "",
@@ -59,6 +64,7 @@
     "eslint-plugin-import": "^2.32.0",
     "ioredis-mock": "^8.13.1",
     "jest": "^29.7.0",
+    "migrate-mongo": "^11.0.0",
     "mongodb-memory-server": "^10.4.3",
     "nodemon": "^3.1.14",
     "socket.io-client": "^4.8.3",

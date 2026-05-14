@@ -7,7 +7,7 @@
 const { z } = require('zod');
 const schemas = require('./schemas');
 
-const { ObjectId, IsoDateTime, EmptyObject, MessageResponse, Gender, GenderPreference, DatingIntention, RelationshipType, Exercise, Zodiac, Children, FamilyPlans, ViceFrequency, Politics, BoostLevel, BoostTier, LikeStatus, LikeType, ReportReason, SelfieReviewStatus, ErrorResponse, EmailRequest, VerifyOtpRequest, GoogleSignInRequest, RefreshTokenRequest, TokenPair, AuthSuccessResponse, UserIdRequest, SendMessageRequest, ReportUserRequest, AccountDeleteRequest, BoostPurchaseRequest, Photo, Prompt, Vices, Location, Preferences, UserModel, ProfileUpdateRequest, SelfieUploadResponse, MessageModel, MatchModel, LikeModel, BoostPlanModel, BoostStatusModel, SwipeFeedResponse, MatchesListResponse, QueueListResponse, MessagesListResponse, IdealMatchAlternate, IdealMatchResponse, AppConfig } = schemas;
+const { ObjectId, IsoDateTime, EmptyObject, MessageResponse, Gender, GenderPreference, DatingIntention, RelationshipType, Exercise, Zodiac, Children, FamilyPlans, ViceFrequency, Politics, BoostLevel, BoostTier, LikeStatus, LikeType, ReportReason, SelfieReviewStatus, ErrorResponse, EmailRequest, VerifyOtpRequest, GoogleSignInRequest, RefreshTokenRequest, TokenPair, AuthSuccessResponse, UserIdRequest, SendMessageRequest, ReportUserRequest, AccountDeleteRequest, BoostPurchaseRequest, Photo, Prompt, Vices, Location, Preferences, UserModel, ProfileUpdateRequest, SelfieUploadResponse, MessageModel, MatchModel, LikeModel, BoostPlanModel, BoostStatusModel, SwipeFeedResponse, MatchesListResponse, QueueListResponse, MessagesListResponse, IdealMatchAlternate, IdealMatchResponse, AppConfig, PendingSelfieUser, PendingSelfiesResponse, AdminSelfieRejectRequest, AdminSelfieReviewResult, AccountExportPhoto, AccountExportMatch, AccountExportMessage, AccountExportLike, AccountExport } = schemas;
 
 const requestEmailOtp = Object.freeze({
   body: z.lazy(() => EmailRequest),
@@ -141,6 +141,28 @@ const deleteAccount = Object.freeze({
   body: z.lazy(() => AccountDeleteRequest),
 });
 
+const exportAccountData = Object.freeze({});
+
+const listPendingSelfies = Object.freeze({
+  query: z.object({
+    "page": z.coerce.number().int().min(1).optional(),
+    "limit": z.coerce.number().int().min(1).max(100).optional(),
+  }),
+});
+
+const approveSelfie = Object.freeze({
+  params: z.object({
+    "userId": z.lazy(() => ObjectId),
+  }),
+});
+
+const rejectSelfie = Object.freeze({
+  body: z.lazy(() => AdminSelfieRejectRequest),
+  params: z.object({
+    "userId": z.lazy(() => ObjectId),
+  }),
+});
+
 const getConfig = Object.freeze({});
 
 const getIdealMatch = Object.freeze({
@@ -179,6 +201,10 @@ module.exports = {
   reportUser,
   blockUser,
   deleteAccount,
+  exportAccountData,
+  listPendingSelfies,
+  approveSelfie,
+  rejectSelfie,
   getConfig,
   getIdealMatch,
 };

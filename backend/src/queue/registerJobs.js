@@ -13,9 +13,15 @@
  */
 
 const sampleJob = require('./jobs/sample.job');
+// Phase 1.1
+const boostActivateJob = require('./jobs/boost.activate.job');
+// Phase 1.2
+const mediaReaperJob = require('./jobs/media.reaper.job');
 
 const JOB_HANDLERS = Object.freeze({
   [sampleJob.NAME]: sampleJob.handler,
+  [boostActivateJob.NAME]: boostActivateJob.handler,
+  [mediaReaperJob.NAME]: mediaReaperJob.handler,
 });
 
 /**

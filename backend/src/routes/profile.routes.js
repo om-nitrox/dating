@@ -4,6 +4,7 @@ const { validate } = require('../middleware/validate.middleware');
 const { updateProfileSchema, reorderPhotosSchema } = require('../validators/profile.validator');
 const { mutationLimiter } = require('../middleware/rateLimiter.middleware');
 const upload = require('../middleware/upload.middleware');
+const { idempotency } = require('../middleware/idempotency.middleware');
 
 const router = Router();
 
@@ -13,7 +14,13 @@ router.post('/photos', mutationLimiter, upload.array('photos', 6), profileContro
 router.put('/photos/reorder', mutationLimiter, validate(reorderPhotosSchema), profileController.reorderPhotos);
 // publicId from Cloudinary contains slashes (e.g. "reverse-match/users/u123/abc").
 // Express 5 uses path-to-regexp v8 — `*publicId` is the wildcard capture token.
-router.delete('/photos/*publicId', mutationLimiter, profileController.deletePhoto);
+// Phase 1.4: idempotent delete — a flaky retry should not flip ?already-deleted into 404.
+router.delete(
+  '/photos/*publicId',
+  mutationLimiter,
+  idempotency({ routeBase: '/profile/photos/*publicId' }),
+  profileController.deletePhoto,
+);
 router.post('/selfie', mutationLimiter, upload.single('selfie'), profileController.uploadSelfie);
 router.post('/fcm-token', mutationLimiter, profileController.registerFcmToken);
 

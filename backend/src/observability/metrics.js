@@ -110,6 +110,17 @@ const otpSentTotal = new promClient.Counter({
   registers: [register],
 });
 
+// Phase 1.2: media reaper outcomes.
+//   success  -> Cloudinary delete succeeded, row removed.
+//   failed   -> Cloudinary delete failed; row stays for retry.
+//   gave_up  -> attempts reached MAX_ATTEMPTS; row marked givenUp.
+const mediaDeleteTotal = new promClient.Counter({
+  name: 'media_delete_total',
+  help: 'Cloudinary delete attempts processed by the media reaper',
+  labelNames: ['status'],
+  registers: [register],
+});
+
 // --------------------------------------------------------------------
 // Express middleware
 // --------------------------------------------------------------------
@@ -170,6 +181,7 @@ module.exports = {
   matchCreatedTotal,
   boostActivatedTotal,
   otpSentTotal,
+  mediaDeleteTotal,
   httpMetricsMiddleware,
   metricsEndpoint,
 };

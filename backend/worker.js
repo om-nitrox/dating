@@ -28,9 +28,10 @@ const config = require('./src/config');
 const connectDB = require('./src/config/db');
 const logger = require('./src/utils/logger');
 const {
-  QUEUE_NAMES, getQueueConnection, closeQueues,
+  QUEUE_NAMES, getQueueConnection, closeQueues, getDefaultQueue,
 } = require('./src/queue');
 const { buildProcessor } = require('./src/queue/registerJobs');
+const mediaReaperJob = require('./src/queue/jobs/media.reaper.job');
 // Phase 0.9: shared metrics registry — same names exposed on both api
 // (port 5000) and worker (port 9091) so the Prometheus scrape config and
 // Grafana dashboards can target either by job label.
@@ -132,12 +133,37 @@ const startWorker = () => {
   logger.info({ queue }, 'BullMQ worker started');
 };
 
+// Phase 1.2: register repeatable jobs. Idempotent — BullMQ deduplicates by
+// the (queue, jobId) tuple, so a worker restart won't create duplicates.
+const scheduleRepeatableJobs = async () => {
+  const q = getDefaultQueue();
+  try {
+    await q.add(
+      mediaReaperJob.NAME,
+      {},
+      {
+        jobId: 'media.reaper.repeat', // stable id => idempotent
+        repeat: { every: config.mediaReaperIntervalMs },
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 100 },
+      },
+    );
+    logger.info(
+      { intervalMs: config.mediaReaperIntervalMs },
+      'media.reaper repeatable job scheduled',
+    );
+  } catch (err) {
+    logger.error({ err: err.message }, 'failed to schedule media.reaper');
+  }
+};
+
 // -------- Bootstrap --------
 const start = async () => {
   try {
     await connectDB();
     await startMetricsServer();
     startWorker();
+    await scheduleRepeatableJobs();
     logger.info('Worker process ready');
   } catch (err) {
     logger.error({ err: err.message }, 'Worker startup failed');

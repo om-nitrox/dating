@@ -291,6 +291,77 @@ const AppConfig = z.object({
     "minAppVersion": z.string(),
   });
 
+const PendingSelfieUser = z.object({
+    "_id": z.lazy(() => ObjectId),
+    "name": z.string().optional(),
+    "email": z.string().email().optional(),
+    "photos": z.array(z.lazy(() => Photo)),
+    "selfiePhoto": z.lazy(() => Photo),
+    "isVerified": z.boolean().optional(),
+    "selfieReviewStatus": z.enum(["none", "pending", "approved", "rejected"]),
+    "updatedAt": z.lazy(() => IsoDateTime).optional(),
+  });
+
+const PendingSelfiesResponse = z.object({
+    "users": z.array(z.lazy(() => PendingSelfieUser)),
+    "page": z.number().int().min(1),
+    "limit": z.number().int().min(1),
+    "total": z.number().int().min(0),
+    "hasMore": z.boolean(),
+  });
+
+const AdminSelfieRejectRequest = z.object({
+    "reason": z.string().max(200).optional(),
+  });
+
+const AdminSelfieReviewResult = z.object({
+    "userId": z.lazy(() => ObjectId),
+    "isVerified": z.boolean().optional(),
+    "selfieReviewStatus": z.enum(["approved", "rejected"]),
+  });
+
+const AccountExportPhoto = z.object({
+    "url": z.string().url(),
+    "publicId": z.string(),
+  });
+
+const AccountExportMatch = z.object({
+    "_id": z.lazy(() => ObjectId),
+    "users": z.array(z.lazy(() => ObjectId)),
+    "createdAt": z.lazy(() => IsoDateTime),
+    "lastMessageAt": z.union([z.lazy(() => IsoDateTime), z.null()]).optional(),
+  });
+
+const AccountExportMessage = z.object({
+    "_id": z.lazy(() => ObjectId),
+    "matchId": z.lazy(() => ObjectId),
+    "text": z.string(),
+    "createdAt": z.lazy(() => IsoDateTime),
+  });
+
+const AccountExportLike = z.object({
+    "_id": z.lazy(() => ObjectId),
+    "fromUser": z.lazy(() => ObjectId).optional(),
+    "toUser": z.lazy(() => ObjectId).optional(),
+    "status": z.lazy(() => LikeStatus),
+    "createdAt": z.lazy(() => IsoDateTime),
+  });
+
+const AccountExport = z.object({
+    "exportedAt": z.lazy(() => IsoDateTime),
+    "schemaVersion": z.number().int(),
+    "profile": z.lazy(() => UserModel),
+    "photos": z.array(z.lazy(() => AccountExportPhoto)),
+    "matches": z.array(z.lazy(() => AccountExportMatch)),
+    "messagesSent": z.array(z.lazy(() => AccountExportMessage)),
+    "likesSent": z.array(z.lazy(() => AccountExportLike)),
+    "likesReceived": z.array(z.lazy(() => AccountExportLike)),
+    "boost": z.object({
+    "level": z.lazy(() => BoostLevel).optional(),
+    "expiry": z.union([z.lazy(() => IsoDateTime), z.null()]).optional(),
+  }),
+  });
+
 module.exports = {
   ObjectId,
   IsoDateTime,
@@ -344,4 +415,13 @@ module.exports = {
   IdealMatchAlternate,
   IdealMatchResponse,
   AppConfig,
+  PendingSelfieUser,
+  PendingSelfiesResponse,
+  AdminSelfieRejectRequest,
+  AdminSelfieReviewResult,
+  AccountExportPhoto,
+  AccountExportMatch,
+  AccountExportMessage,
+  AccountExportLike,
+  AccountExport,
 };

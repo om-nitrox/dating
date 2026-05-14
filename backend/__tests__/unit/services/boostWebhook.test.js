@@ -1,10 +1,16 @@
 /**
- * Unit tests for Stripe webhook idempotency (fix 13).
+ * Unit tests for Stripe webhook idempotency.
  *
- * The handler MUST use a single upsert on WebhookEvent so the
- * find-then-create TOCTOU window cannot let two concurrent deliveries both
- * activate a boost. `activateBoost` should fire only when
- * `WebhookEvent.updateOne(..., { upsert: true })` reports `upsertedCount === 1`.
+ * Phase 1.1 redesign:
+ *   The webhook MUST use a single WebhookEvent upsert so two concurrent
+ *   deliveries can't both enqueue a boost.activate job. On `upsertedCount=1`
+ *   (we won the race) the handler enqueues a BullMQ job and returns 200;
+ *   `upsertedCount=0` (duplicate) returns 200 without enqueueing.
+ *
+ *   The job itself runs `activateBoost` (out-of-band), so the synchronous
+ *   webhook path no longer calls `User.findByIdAndUpdate` — that's now the
+ *   job worker's responsibility (`__tests__/unit/services/boost.service.test.js`
+ *   covers activateBoost directly).
  */
 
 const mockStripe = {
@@ -12,6 +18,8 @@ const mockStripe = {
     constructEvent: jest.fn(),
   },
 };
+
+const mockQueueAdd = jest.fn().mockResolvedValue({ id: 'job_123' });
 
 jest.mock('../../../src/models/User');
 jest.mock('../../../src/models/WebhookEvent');
@@ -21,6 +29,10 @@ jest.mock('../../../src/config', () => ({
   nodeEnv: 'test',
   appDeepLinkScheme: 'reversematch',
   appBaseUrl: 'http://localhost:5000',
+}));
+jest.mock('../../../src/queue', () => ({
+  // Lazy getter so importing this mock doesn't open Redis sockets.
+  get defaultQueue() { return { add: mockQueueAdd }; },
 }));
 
 const User = require('../../../src/models/User');
@@ -46,12 +58,12 @@ const makeEvent = (id = 'evt_1') => ({
   },
 });
 
-describe('handleStripeWebhook idempotency (fix 13)', () => {
-  it('activates the boost exactly once on first delivery (upsertedCount=1)', async () => {
+describe('handleStripeWebhook idempotency (Phase 1.1)', () => {
+  it('enqueues the boost.activate job exactly once on first delivery', async () => {
     mockStripe.webhooks.constructEvent.mockReturnValue(makeEvent('evt_first'));
     WebhookEvent.updateOne = jest.fn().mockResolvedValue({ upsertedCount: 1 });
 
-    await handleStripeWebhook(Buffer.from('payload'), 'sig');
+    const res = await handleStripeWebhook(Buffer.from('payload'), 'sig');
 
     expect(WebhookEvent.updateOne).toHaveBeenCalledWith(
       { eventId: 'evt_first' },
@@ -60,20 +72,34 @@ describe('handleStripeWebhook idempotency (fix 13)', () => {
       }),
       { upsert: true },
     );
-    expect(User.findByIdAndUpdate).toHaveBeenCalledTimes(1);
+    // Side-effect is now an enqueue, NOT a direct DB write.
+    expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      'boost.activate',
+      expect.objectContaining({
+        eventId: 'evt_first',
+        userId: 'user_123',
+        tier: 'gold',
+        durationMinutes: 180,
+      }),
+    );
+    expect(User.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(res.status).toBe('enqueued');
   });
 
-  it('SKIPS the side-effect on a duplicate delivery (upsertedCount=0)', async () => {
+  it('SKIPS the enqueue on a duplicate delivery (upsertedCount=0)', async () => {
     mockStripe.webhooks.constructEvent.mockReturnValue(makeEvent('evt_dupe'));
     WebhookEvent.updateOne = jest.fn().mockResolvedValue({ upsertedCount: 0 });
 
-    await handleStripeWebhook(Buffer.from('payload'), 'sig');
+    const res = await handleStripeWebhook(Buffer.from('payload'), 'sig');
 
     expect(WebhookEvent.updateOne).toHaveBeenCalledTimes(1);
+    expect(mockQueueAdd).not.toHaveBeenCalled();
     expect(User.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(res.status).toBe('duplicate');
   });
 
-  it('activates only ONCE even when called twice concurrently', async () => {
+  it('enqueues only ONCE even when called twice concurrently', async () => {
     mockStripe.webhooks.constructEvent.mockReturnValue(makeEvent('evt_race'));
 
     // First caller upserts (count=1), second caller sees the existing row (count=0).
@@ -88,6 +114,6 @@ describe('handleStripeWebhook idempotency (fix 13)', () => {
       handleStripeWebhook(Buffer.from('payload'), 'sig'),
     ]);
 
-    expect(User.findByIdAndUpdate).toHaveBeenCalledTimes(1);
+    expect(mockQueueAdd).toHaveBeenCalledTimes(1);
   });
 });

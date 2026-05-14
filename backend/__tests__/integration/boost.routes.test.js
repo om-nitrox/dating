@@ -4,6 +4,14 @@ jest.mock('../../src/config/stripe', () => ({
   webhooks: { constructEvent: jest.fn() },
 }));
 
+// Phase 1.1: webhook now enqueues a `boost.activate` job instead of writing
+// to the User doc synchronously. Mock the queue so the integration test
+// doesn't need a running Redis to capture the enqueue call.
+const mockQueueAdd = jest.fn().mockResolvedValue({ id: 'job_test' });
+jest.mock('../../src/queue', () => ({
+  get defaultQueue() { return { add: mockQueueAdd }; },
+}));
+
 const { startTestApp, stopTestApp, clearDB } = require('../helpers/testApp');
 const request = require('supertest');
 const { signAccessToken } = require('../../src/utils/token');
@@ -40,8 +48,8 @@ afterEach(async () => {
   jest.clearAllMocks();
 });
 
-describe('POST /api/v1/boost/webhook — idempotency', () => {
-  it('processes a new Stripe checkout.session.completed event and activates boost', async () => {
+describe('POST /api/v1/boost/webhook — idempotency (Phase 1.1)', () => {
+  it('enqueues a boost.activate job on first delivery (NOT synchronous DB write)', async () => {
     const fakeEvent = {
       id: 'evt_unique_001',
       type: 'checkout.session.completed',
@@ -64,10 +72,30 @@ describe('POST /api/v1/boost/webhook — idempotency', () => {
       .set('Content-Type', 'application/json')
       .send(JSON.stringify(fakeEvent));
 
+    // Phase 1.1: synchronous response is 200 with no DB write — the boost
+    // is activated asynchronously by the worker. We verify the job was
+    // enqueued with the right payload.
     expect(res.status).toBe(200);
+    expect(res.body.status).toBe('enqueued');
 
-    const boostedUser = await User.findById(maleUser._id);
-    expect(boostedUser.boostLevel).toBe('bronze');
+    expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      'boost.activate',
+      expect.objectContaining({
+        eventId: 'evt_unique_001',
+        userId: maleUser._id.toString(),
+        tier: 'bronze',
+        durationMinutes: 30,
+      }),
+    );
+
+    // The user doc must NOT have been written yet — that's the worker's job.
+    const unboosted = await User.findById(maleUser._id);
+    expect(unboosted.boostLevel).toBe('none');
+
+    // And the WebhookEvent row should be present (dedupe gate).
+    const evt = await WebhookEvent.findOne({ eventId: 'evt_unique_001' });
+    expect(evt).not.toBeNull();
   });
 
   it('skips duplicate Stripe events (idempotency key)', async () => {
@@ -96,6 +124,10 @@ describe('POST /api/v1/boost/webhook — idempotency', () => {
       .send(JSON.stringify(duplicateEvent));
 
     expect(res.status).toBe(200);
+    expect(res.body.status).toBe('duplicate');
+
+    // No enqueue on duplicate.
+    expect(mockQueueAdd).not.toHaveBeenCalled();
 
     // boostLevel should NOT be changed since the event was already processed
     const notBoosted = await User.findById(maleUser._id);

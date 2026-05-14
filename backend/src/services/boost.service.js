@@ -122,6 +122,18 @@ const activateBoost = async (userId, tier, durationMinutes) => {
   return expiry;
 };
 
+/**
+ * Verify a Stripe webhook signature, dedupe via WebhookEvent, and enqueue the
+ * downstream activation as a BullMQ job (Phase 1.1).
+ *
+ * Returns one of:
+ *   { status: 'enqueued',  jobId, eventId }   — first time we've seen this event
+ *   { status: 'duplicate', eventId }          — WebhookEvent already existed
+ *   { status: 'ignored',   eventId, type }    — recognised but uninteresting type
+ *
+ * The HTTP caller (boost.controller.handleWebhook) responds 200 in all three
+ * cases — Stripe must not retry on duplicate/ignored.
+ */
 const handleStripeWebhook = async (rawBody, signature) => {
   if (!stripe) throw new AppError('Payments not configured', 500);
 
@@ -147,19 +159,51 @@ const handleStripeWebhook = async (rawBody, signature) => {
   );
 
   if (!upsertRes.upsertedCount) {
-    logger.info(`Stripe webhook already processed: ${event.id}`);
-    return;
+    logger.info({ eventId: event.id }, 'Stripe webhook already processed');
+    return { status: 'duplicate', eventId: event.id };
   }
 
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const { userId, tier, durationMinutes } = session.metadata || {};
-
-    if (userId && tier && durationMinutes) {
-      await activateBoost(userId, tier, parseInt(durationMinutes, 10));
-      logger.info(`Boost activated: userId=${userId}, tier=${tier}, durationMinutes=${durationMinutes}`);
-    }
+  if (event.type !== 'checkout.session.completed') {
+    return { status: 'ignored', eventId: event.id, type: event.type };
   }
+
+  const session = event.data.object;
+  const { userId, tier, durationMinutes } = session.metadata || {};
+  if (!userId || !tier || !durationMinutes) {
+    logger.warn(
+      { eventId: event.id, metadata: session.metadata },
+      'Stripe webhook missing required metadata; cannot enqueue activation',
+    );
+    return { status: 'ignored', eventId: event.id, type: event.type };
+  }
+
+  // Lazy-require the queue module so the api boot stays fast and tests that
+  // never enqueue don't open a Redis socket on import.
+  // eslint-disable-next-line global-require
+  const { defaultQueue } = require('../queue');
+  // eslint-disable-next-line global-require
+  const boostActivateJob = require('../queue/jobs/boost.activate.job');
+
+  const job = await defaultQueue.add(boostActivateJob.NAME, {
+    eventId: event.id,
+    userId,
+    tier,
+    durationMinutes: parseInt(durationMinutes, 10),
+  });
+
+  logger.info(
+    {
+      event: 'boost.activate.enqueued',
+      eventId: event.id,
+      jobId: job.id,
+      userId,
+      tier,
+      durationMinutes,
+    },
+    'enqueued boost activation',
+  );
+
+  return { status: 'enqueued', jobId: job.id, eventId: event.id };
 };
 
 /**

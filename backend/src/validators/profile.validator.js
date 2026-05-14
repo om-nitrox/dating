@@ -5,6 +5,10 @@
 //   - `nullableString` (Joi accepts '' and null to clear an optional field)
 //   - `fcmToken` side-channel field
 // When the spec grows to cover these, swap to `zodValidate(requests.updateProfile)`.
+//
+// Phase 1.5: `politics` migrated to the spec's closed enum
+// (liberal/moderate/conservative/not_political/prefer_not_to_say). All other
+// fields stay on Joi until a future zod sweep.
 const Joi = require('joi');
 const {
   GENDER: GENDER_VALUES,
@@ -17,6 +21,13 @@ const {
   EXERCISE: EXERCISE_VALUES,
   ZODIAC: ZODIAC_VALUES,
 } = require('../domain/taxonomies');
+const { Politics: PoliticsZod } = require('./generated/schemas');
+
+// Phase 1.5: pull the canonical politics enum directly from the generated
+// zod schema (compiled from the OpenAPI spec). The Joi schema below converts
+// it to a Joi-compatible list with `.options` so the validator can NEVER
+// drift from the spec — regenerating schemas.js automatically refreshes this.
+const POLITICS_SPEC_VALUES = PoliticsZod.options;
 
 // Allow clients to explicitly clear optional fields by sending null.
 const nullableString = (max) => Joi.string().trim().max(max).allow('', null);
@@ -57,7 +68,16 @@ const updateProfileSchema = Joi.object({
   workplace: nullableString(80),
   education: nullableString(80),
   religion: nullableString(40),
-  politics: nullableString(40),
+  // Phase 1.5: closed enum sourced from OpenAPI spec (see Politics in
+  // ./generated/schemas.js). Empty string / null accepted as a clear sentinel
+  // — those values are remapped to `prefer_not_to_say` by the service layer
+  // if required, but here we just allow them through so an existing profile
+  // can clear its prior selection.
+  politics: Joi.alternatives().try(
+    Joi.string().valid(...POLITICS_SPEC_VALUES),
+    Joi.string().valid(''),
+    Joi.valid(null),
+  ),
   languages: Joi.array().items(Joi.string().trim().max(40)).max(5),
   datingIntentions: Joi.string().valid(...DATING_INTENTIONS_VALUES),
   relationshipType: Joi.string().valid(...RELATIONSHIP_TYPE_VALUES),

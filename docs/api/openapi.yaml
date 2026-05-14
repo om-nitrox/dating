@@ -51,6 +51,10 @@ tags:
     description: Unauthenticated app-wide config (legal URLs, min app version, support email).
   - name: ideal-match
     description: Highest-similarity match computed over a feature vector with weighted cosine.
+  - name: admin
+    description: |
+      Admin-only endpoints (require `role: admin` on the User document). Includes the
+      selfie review queue, reports moderation, and direct user-management actions.
 
 security:
   - bearerAuth: []
@@ -344,6 +348,7 @@ paths:
             type: string
           description: Cloudinary `publicId` (URL-encoded — slashes encoded as `%2F`).
           example: users%2Fu123%2Fabc
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: Photo deleted
@@ -470,6 +475,8 @@ paths:
       tags: [swipe]
       summary: Girl likes a boy (creates a pending Like, pushes onto his queue)
       operationId: likeUser
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -593,6 +600,7 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/ObjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: Match created
@@ -685,6 +693,7 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/ObjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: Unmatched
@@ -752,6 +761,8 @@ paths:
         `{ message: ... }`. Server also fans out `new-message` over Socket.IO to both
         participants' personal rooms.
       operationId: sendMessage
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -894,6 +905,8 @@ paths:
       tags: [safety]
       summary: Report a user for a ToS violation
       operationId: reportUser
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -921,6 +934,8 @@ paths:
       tags: [safety]
       summary: Block a user (auto-deletes any existing match between them)
       operationId: blockUser
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -972,6 +987,136 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /account/export:
+    get:
+      tags: [account]
+      summary: Export all data the authenticated user has stored on the platform
+      description: |
+        GDPR Article 15 — right of access. Returns a JSON document of the
+        user's profile, photos (URLs), matches, messages they sent, likes
+        sent + received, and current boost state. Response is delivered as
+        `Content-Disposition: attachment` so a browser download triggers a
+        `.json` file save; an in-app fetch sees a regular JSON body.
+      operationId: exportAccountData
+      responses:
+        '200':
+          description: Exported data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountExport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ----------------------------------------------------------------------
+  # 9b. Admin — selfie review queue (Phase 1.3)
+  # ----------------------------------------------------------------------
+  /admin/selfies/pending:
+    get:
+      tags: [admin]
+      summary: List users whose selfie is awaiting admin review
+      description: |
+        Page-paginated list of users with `selfieReviewStatus = 'pending'`.
+        Sorted by `updatedAt DESC` so the most recent uploads surface first.
+      operationId: listPendingSelfies
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Pending selfies page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingSelfiesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /admin/selfies/{userId}/approve:
+    post:
+      tags: [admin]
+      summary: Approve a user's selfie (grants the verified badge)
+      operationId: approveSelfie
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+      responses:
+        '200':
+          description: Selfie approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSelfieReviewResult'
+        '400':
+          description: Selfie is not in `pending` state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /admin/selfies/{userId}/reject:
+    post:
+      tags: [admin]
+      summary: Reject a user's selfie (with optional reason)
+      operationId: rejectSelfie
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminSelfieRejectRequest'
+      responses:
+        '200':
+          description: Selfie rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSelfieReviewResult'
+        '400':
+          description: Selfie is not in `pending` state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/ServerError'
 
@@ -1058,6 +1203,23 @@ components:
         minimum: 1
         default: 1
       description: 1-indexed page number.
+
+    # -------- Phase 1.4 -----------------------------------------------
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: |
+        Client-supplied UUID used to dedupe POST/DELETE retries (Phase 1.4).
+        Send the SAME key when retrying after a network failure; the server
+        will replay the original response instead of re-executing the
+        mutation. The header is OPTIONAL — omit it for fire-and-forget
+        calls. Cache TTL is 24 hours. Retries that arrive while the
+        original request is still in flight either block briefly and replay,
+        or get `409 IDEMPOTENT_INFLIGHT` if they hit the inflight timeout.
 
   responses:
     ValidationError:
@@ -1859,3 +2021,173 @@ components:
           type: string
           description: SemVer minimum supported app version; clients below this are forced to update.
           examples: ["1.0.0"]
+
+    # -------- Phase 1.3 — admin selfie review --------
+    PendingSelfieUser:
+      type: object
+      description: |
+        Trimmed projection of a user awaiting selfie review. Includes the
+        selfie itself (URL + publicId) so the admin UI can render it; full
+        profile fields are NOT included to keep the queue payload small.
+      required: [_id, photos, selfiePhoto, selfieReviewStatus]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Photo'
+        selfiePhoto:
+          $ref: '#/components/schemas/Photo'
+        isVerified:
+          type: boolean
+        selfieReviewStatus:
+          type: string
+          enum: [none, pending, approved, rejected]
+        updatedAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    PendingSelfiesResponse:
+      type: object
+      required: [users, page, limit, total, hasMore]
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingSelfieUser'
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+        hasMore:
+          type: boolean
+
+    AdminSelfieRejectRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 200
+          description: Optional free-text reason. Surfaced to the user via FCM push.
+
+    AdminSelfieReviewResult:
+      type: object
+      required: [userId, selfieReviewStatus]
+      properties:
+        userId:
+          $ref: '#/components/schemas/ObjectId'
+        isVerified:
+          type: boolean
+          description: Present on approval only.
+        selfieReviewStatus:
+          type: string
+          enum: [approved, rejected]
+
+    # -------- Phase 1.17 — GDPR export --------
+    AccountExportPhoto:
+      type: object
+      required: [url, publicId]
+      properties:
+        url:
+          type: string
+          format: uri
+        publicId:
+          type: string
+
+    AccountExportMatch:
+      type: object
+      required: [_id, users, createdAt]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectId'
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'
+        lastMessageAt:
+          oneOf:
+            - $ref: '#/components/schemas/IsoDateTime'
+            - type: 'null'
+
+    AccountExportMessage:
+      type: object
+      required: [_id, matchId, text, createdAt]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        matchId:
+          $ref: '#/components/schemas/ObjectId'
+        text:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    AccountExportLike:
+      type: object
+      required: [_id, status, createdAt]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        fromUser:
+          $ref: '#/components/schemas/ObjectId'
+        toUser:
+          $ref: '#/components/schemas/ObjectId'
+        status:
+          $ref: '#/components/schemas/LikeStatus'
+        createdAt:
+          $ref: '#/components/schemas/IsoDateTime'
+
+    AccountExport:
+      type: object
+      required: [exportedAt, schemaVersion, profile, photos, matches, messagesSent, likesSent, likesReceived, boost]
+      properties:
+        exportedAt:
+          $ref: '#/components/schemas/IsoDateTime'
+        schemaVersion:
+          type: integer
+          description: Bump when the export shape changes. v1 = the schema below.
+          examples: [1]
+        profile:
+          $ref: '#/components/schemas/UserModel'
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountExportPhoto'
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountExportMatch'
+        messagesSent:
+          type: array
+          description: Messages the user sent. Received messages are NOT included (they belong to the other user's right of access).
+          items:
+            $ref: '#/components/schemas/AccountExportMessage'
+        likesSent:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountExportLike'
+        likesReceived:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountExportLike'
+        boost:
+          type: object
+          properties:
+            level:
+              $ref: '#/components/schemas/BoostLevel'
+            expiry:
+              oneOf:
+                - $ref: '#/components/schemas/IsoDateTime'
+                - type: 'null'

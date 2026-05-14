@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const PendingImageDelete = require('../models/PendingImageDelete');
 const { uploadImage, deleteImage } = require('./upload.service');
 const { upsertFcmToken } = require('./notification.service');
 const { invalidateIdealMatch } = require('./idealMatch.service');
@@ -182,9 +183,42 @@ const deletePhoto = async (userId, publicId) => {
   try {
     await deleteImage(publicId);
   } catch (err) {
-    // TODO(image-reaper): persist publicId to a `pendingImageDeletes`
-    // collection here for a background sweeper to retry.
-    logger.warn({ publicId, err: err.message }, 'Cloudinary delete failed; orphan asset queued for cleanup');
+    // Phase 1.2: persist to PendingImageDelete so the `media.reaper`
+    // BullMQ repeatable job retries with exponential backoff. The user's
+    // Mongo doc has already been updated above; the row is the SOLE record
+    // of the orphan.
+    try {
+      await PendingImageDelete.updateOne(
+        { publicId },
+        {
+          $setOnInsert: {
+            publicId,
+            nextAttemptAt: new Date(Date.now() + 60 * 1000),
+          },
+          $set: { lastError: String(err.message || err).slice(0, 500) },
+        },
+        { upsert: true },
+      );
+      logger.warn(
+        {
+          event: 'media.delete.deferred',
+          publicId,
+          err: err.message,
+        },
+        'Cloudinary delete failed; queued for reaper',
+      );
+    } catch (persistErr) {
+      // If we can't even persist the orphan, log loudly — we now leak the
+      // asset. This is the worst case but shouldn't be common.
+      logger.error(
+        {
+          event: 'media.delete.deferred.persist_failed',
+          publicId,
+          err: persistErr.message,
+        },
+        'Failed to persist pending image delete; asset is leaked',
+      );
+    }
   }
 
   return user.photos;

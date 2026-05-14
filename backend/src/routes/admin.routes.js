@@ -14,4 +14,17 @@ router.post('/reports/:id/resolve', validateObjectId('id'), adminController.reso
 router.post('/users/:id/ban', validateObjectId('id'), adminController.banUser);
 router.get('/users/:id', validateObjectId('id'), adminController.getUserProfile);
 
+// Phase 1.3 — selfie review queue.
+router.get('/selfies/pending', adminController.listPendingSelfies);
+router.post(
+  '/selfies/:userId/approve',
+  validateObjectId('userId'),
+  adminController.approveSelfie,
+);
+router.post(
+  '/selfies/:userId/reject',
+  validateObjectId('userId'),
+  adminController.rejectSelfie,
+);
+
 module.exports = router;

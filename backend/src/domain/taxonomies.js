@@ -98,7 +98,19 @@ const RELIGION = freeze([
   'Other',
 ]);
 
-const POLITICS = freeze(['left', 'center_left', 'center', 'center_right', 'right']);
+// Phase 1.5: aligned to the OpenAPI spec values. The pre-spec legacy values
+// (`left`, `center_left`, `center`, `center_right`, `right`) are migrated to
+// the new enum by `migrations/20260514120000-backfill-politics-enum.js`.
+// Kept as a frozen array for parity with the other taxonomies, but the
+// runtime source of truth for validation is now the zod `Politics` schema in
+// `validators/generated/schemas.js`.
+const POLITICS = freeze([
+  'liberal',
+  'moderate',
+  'conservative',
+  'not_political',
+  'prefer_not_to_say',
+]);
 
 // -------- Vices --------
 // Used by drinking / smoking / marijuana / drugs sub-fields.
