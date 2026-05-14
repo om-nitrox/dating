@@ -45,5 +45,24 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Reverse Match uses your location to show you people nearby.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Reverse Match needs camera access to take profile photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Reverse Match needs photo library access to upload profile photos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Reverse Match needs to save photos to your library.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>reversematch</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>com.reversematch.app</string>
+		</dict>
+	</array>
 </dict>
 </plist>

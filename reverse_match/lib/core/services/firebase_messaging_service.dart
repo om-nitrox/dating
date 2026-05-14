@@ -2,8 +2,11 @@ import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../features/profile/data/profile_repository.dart';
+import '../router/app_router.dart';
 import '../storage/secure_storage_service.dart';
 
 final fcmServiceProvider = Provider<FcmService>((ref) {
@@ -76,18 +79,33 @@ class FcmService {
   }
 
   void _handleNotificationTap(RemoteMessage message) {
-    final type = message.data['type'];
-    switch (type) {
-      case 'new_match':
-        debugPrint('FCM: new match → navigate to /matches');
-        break;
-      case 'new_message':
-        final matchId = message.data['matchId'];
-        debugPrint('FCM: new message in match $matchId → navigate to /chat/$matchId');
-        break;
-      case 'new_like':
-        debugPrint('FCM: new like → navigate to /home');
-        break;
+    // Route through the root navigator. If the app hasn't booted yet (e.g.
+    // terminated-state launch firing before the first frame), defer one
+    // microtask — the navigator is built synchronously by then.
+    void run() {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx == null) return;
+      final type = message.data['type'];
+      switch (type) {
+        case 'new_match':
+          GoRouter.of(ctx).go('/matches');
+          break;
+        case 'new_message':
+          final matchId = message.data['matchId'];
+          if (matchId is String && matchId.isNotEmpty) {
+            GoRouter.of(ctx).push('/chat/$matchId');
+          }
+          break;
+        case 'new_like':
+          GoRouter.of(ctx).go('/home');
+          break;
+      }
+    }
+
+    if (rootNavigatorKey.currentContext != null) {
+      run();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => run());
     }
   }
 }

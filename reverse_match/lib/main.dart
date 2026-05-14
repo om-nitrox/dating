@@ -5,19 +5,18 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'core/router/app_router.dart';
+import 'core/services/deep_link_service.dart';
 import 'core/services/firebase_messaging_service.dart';
 import 'core/theme/app_theme.dart';
 import 'firebase_options.dart';
 
-// To enable Sentry, add sentry_flutter to pubspec.yaml and uncomment:
-// import 'package:sentry_flutter/sentry_flutter.dart';
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load environment config
-  // Use --dart-define=ENV=production to switch envs at build time
+  // Load environment config. Use --dart-define=ENV=production to switch envs
+  // at build time.
   const env = String.fromEnvironment('ENV', defaultValue: 'development');
   final envFile = env == 'production'
       ? '.env.production'
@@ -28,7 +27,7 @@ void main() async {
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Background handler must be registered before any other FCM setup
+  // Background FCM handler must be registered before any other FCM setup.
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   // One ProviderContainer for the whole app. We initialize FCM through it
@@ -36,14 +35,33 @@ void main() async {
   final container = ProviderContainer();
   await container.read(fcmServiceProvider).initAndRegister();
 
-  _runApp(container);
+  // Start the deep-link listener. The service swallows its own errors so
+  // failure here can't block app startup.
+  unawaited(container.read(deepLinkServiceProvider).start());
+
+  final sentryDsn = dotenv.env['SENTRY_DSN'] ?? '';
+
+  if (sentryDsn.isEmpty) {
+    // No DSN provided — skip Sentry entirely. Useful in local dev so we
+    // don't pay the init cost on every hot restart.
+    _runApp(container);
+    return;
+  }
+
+  await SentryFlutter.init(
+    (options) {
+      options.dsn = sentryDsn;
+      options.tracesSampleRate = 0.1;
+      options.environment = env;
+    },
+    appRunner: () => _runApp(container),
+  );
 }
 
 void _runApp(ProviderContainer container) {
-  // Catch uncaught Flutter errors
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
-    // If Sentry is enabled: Sentry.captureException(details.exception, stackTrace: details.stack);
+    Sentry.captureException(details.exception, stackTrace: details.stack);
   };
 
   runZonedGuarded(
@@ -57,7 +75,7 @@ void _runApp(ProviderContainer container) {
     },
     (error, stackTrace) {
       debugPrint('Uncaught error: $error');
-      // If Sentry is enabled: Sentry.captureException(error, stackTrace: stackTrace);
+      Sentry.captureException(error, stackTrace: stackTrace);
     },
   );
 }

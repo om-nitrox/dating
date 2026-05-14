@@ -58,6 +58,12 @@ dependencies:
   permission_handler: ^11.3.1
   url_launcher: ^6.3.1
 
+  # Deep links — Stripe Checkout return + share-link routing via reversematch://
+  app_links: ^6.1.1
+
+  # Crash reporting
+  sentry_flutter: ^8.10.1
+
   # Generated REST + model layer (Phase 0.2). Path dependency — picked up by
   # `melos bootstrap` since `packages/**` is listed in melos.yaml.
   reverse_match_api:
@@ -69,6 +75,29 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   json_serializable: ^6.9.4
   build_runner: ^2.4.14
+  mocktail: ^1.0.4
+  flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.1
+
+# App icon generation. Run `dart run flutter_launcher_icons` after dropping
+# `assets/images/app_icon.png` (1024x1024 PNG, opaque for iOS) +
+# `assets/images/app_icon_foreground.png` for the Android adaptive icon.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/app_icon.png"
+  adaptive_icon_background: "#E91E8C"
+  adaptive_icon_foreground: "assets/images/app_icon_foreground.png"
+
+# Native splash screen. Run `dart run flutter_native_splash:create` after
+# dropping `assets/images/splash_logo.png` (recommended 300x300).
+flutter_native_splash:
+  color: "#E91E8C"
+  image: assets/images/splash_logo.png
+  android_12:
+    color: "#E91E8C"
+    icon_background_color: "#E91E8C"
+    image: assets/images/splash_logo.png
 
 flutter:
   uses-material-design: true

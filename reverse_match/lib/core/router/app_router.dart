@@ -5,7 +5,9 @@ import '../../features/auth/domain/auth_state.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/otp_screen.dart';
+import '../../features/boost/presentation/screens/boost_cancel_screen.dart';
 import '../../features/boost/presentation/screens/boost_screen.dart';
+import '../../features/boost/presentation/screens/boost_success_screen.dart';
 import '../../features/chat/presentation/screens/chat_screen.dart';
 import '../../features/home/presentation/screens/boy_home_screen.dart';
 import '../../features/home/presentation/screens/girl_home_screen.dart';
@@ -47,10 +49,17 @@ import '../../features/splash/presentation/screens/splash_screen.dart';
 import '../network/connectivity_service.dart';
 import '../theme/app_colors.dart';
 
+/// Root navigator key — exposed so non-widget code (FCM tap handlers, deep
+/// link service) can drive navigation without holding a BuildContext from a
+/// widget tree.
+final GlobalKey<NavigatorState> rootNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
+
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/',
     redirect: (context, state) {
       final path = state.matchedLocation;
@@ -291,6 +300,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/boost',
         builder: (_, __) => const BoostScreen(),
+      ),
+      GoRoute(
+        path: '/boost/success',
+        builder: (_, __) => const BoostSuccessScreen(),
+      ),
+      GoRoute(
+        path: '/boost/cancel',
+        builder: (_, __) => const BoostCancelScreen(),
       ),
     ],
   );

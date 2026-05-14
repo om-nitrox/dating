@@ -8,6 +8,7 @@ import '../../../../core/storage/secure_storage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../shared/models/message_model.dart';
+import '../../../../shared/widgets/empty_state_widget.dart';
 import '../../data/chat_repository.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -230,14 +231,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _messages.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Say hello!',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 16,
-                          ),
-                        ),
+                    ? const EmptyStateWidget(
+                        icon: Icons.chat_bubble_outline_rounded,
+                        title: 'Start the conversation',
+                        subtitle: 'Say hello!',
                       )
                     : Column(
                         children: [
