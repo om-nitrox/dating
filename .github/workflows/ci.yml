@@ -166,7 +166,10 @@ jobs:
     name: OpenAPI Lint
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.openapi == 'true' || hashFiles('docs/api/openapi.yaml') != ''
+    # `hashFiles()` is not allowed in a job-level `if:` (GitHub Actions
+    # context restrictions), so we gate purely on the path filter and let
+    # step-level `if:` check for file presence below.
+    if: needs.changes.outputs.openapi == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -196,10 +199,10 @@ jobs:
     name: OpenAPI Codegen Drift
     runs-on: ubuntu-latest
     needs: changes
-    if: |
-      needs.changes.outputs.openapi == 'true'
-      || needs.changes.outputs.flutter == 'true'
-      || hashFiles('packages/api-client-dart/SPEC_HASH') != ''
+    # `hashFiles()` is not allowed in a job-level `if:`. Step-level
+    # `hashFiles()` below still guards against the SPEC_HASH file being
+    # missing when this job is invoked from a different path filter.
+    if: needs.changes.outputs.openapi == 'true' || needs.changes.outputs.flutter == 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Verify SPEC_HASH matches docs/api/openapi.yaml

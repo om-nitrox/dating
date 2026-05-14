@@ -19,8 +19,11 @@ name: CD (Staging)
 # ---------------------------------------------------------------------------
 
 on:
-  push:
-    branches: [main]
+  # CD is paused until AWS OIDC role + ECR are provisioned (MANUAL_STEPS.md
+  # Phase 2.4). Re-enable the push trigger when AWS_ACCOUNT_ID / AWS_REGION
+  # vars and the OIDC role secret are in place.
+  # push:
+  #   branches: [main]
   workflow_dispatch:
     inputs:
       deploy_only:
