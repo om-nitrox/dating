@@ -10,8 +10,11 @@ Reverse Match is a full-stack dating platform where girls choose first:
 
 This repository contains:
 
-- `backend/` - Node.js + Express API + Socket.IO
-- `reverse_match/` - Flutter mobile app (Android + iOS + desktop/web scaffolding)
+- `backend/` — Node.js + Express API + Socket.IO
+- `reverse_match/` — Flutter mobile app (Android + iOS + desktop/web scaffolding)
+- `docs/api/` — OpenAPI 3.1 + AsyncAPI specs (single source of truth)
+- `infra/` — Terraform for AWS
+- `packages/` — shared packages (e.g. `api-client-dart`)
 
 ---
 
@@ -31,26 +34,25 @@ This repository contains:
 12. [CI Pipeline](#ci-pipeline)
 13. [Deployment](#deployment)
 14. [Production Checklist](#production-checklist)
-14. [Troubleshooting](#troubleshooting)
-15. [Additional Documentation](#additional-documentation)
+15. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Architecture
 
-High level architecture diagram:
-
-![Architecture](./dating_app_architecture.svg)
-
 Core flow:
 
 1. Client authenticates via OTP or Google.
 2. User completes profile setup.
-3. Girls fetch swipe feed and like/skip.
-4. Boys fetch queue and accept/reject.
-5. Match creation unlocks real-time chat.
-6. Notifications are sent via Firebase (if configured).
-7. Paid boosts are processed via Stripe checkout + webhook.
+3. Girls fetch the swipe feed and like/skip.
+4. Boys fetch the incoming-likes queue and accept/reject.
+5. Accepting a like creates a match and unlocks real-time chat.
+6. Push notifications are dispatched via Firebase (when configured).
+7. Paid boosts run through Stripe checkout + webhook activation.
+
+The Node API exposes REST under `/api/v1` and real-time events over Socket.IO,
+both protected by JWT. MongoDB stores persistent data; Redis powers rate
+limiting, OTP storage, and the Socket.IO adapter when running multiple replicas.
 
 ---
 
@@ -76,7 +78,7 @@ Core flow:
 - Boys-only incoming likes queue
 - Accept/reject queue actions
 - Match list with last message + unread count
-- Unmatch/delete conversation
+- Unmatch / delete conversation
 
 ### Real-Time Chat
 
@@ -89,7 +91,7 @@ Core flow:
 ### Boost System
 
 - Automatic visibility boost based on `daysWithoutMatch`
-- Paid boost tiers: bronze/silver/gold
+- Paid boost tiers: bronze / silver / gold
 - Stripe checkout + webhook activation
 - Daily cron jobs for boost counters and cleanup
 
@@ -130,18 +132,29 @@ Core flow:
 - image_picker
 - geolocator / geocoding
 
+### Infrastructure
+
+- AWS ECS Fargate (api)
+- ElastiCache Redis
+- MongoDB Atlas
+- ECR for images
+- Secrets Manager for runtime secrets
+- Terraform-managed (`infra/terraform/`)
+
 ---
 
 ## Repository Structure
 
-This is a monorepo. npm workspaces owns the Node side; Melos owns the Dart side; the Flutter SDK itself is pinned via FVM (`.fvmrc`) rather than vendored.
+This is a monorepo. npm workspaces own the Node side, Melos owns the Dart side,
+and the Flutter SDK itself is pinned via FVM (`.fvmrc`) rather than vendored.
 
 ```text
 - backend/         # Node/Express API + Socket.IO   (npm workspace)
 - reverse_match/   # Flutter mobile app             (Melos / FVM workspace)
 - docs/api/        # OpenAPI 3.1 + AsyncAPI (single source of truth)
+- docs/deployment/ # Deployment runbooks
 - infra/           # Terraform for AWS
-- packages/        # shared packages (api-client-dart added in Phase 0.2)
+- packages/        # shared packages (api-client-dart, etc.)
 - package.json     # root: npm workspaces, Prettier, Husky, lint-staged, Spectral
 - melos.yaml       # root: Dart/Flutter workspace
 - .fvmrc           # root: pinned Flutter SDK version
@@ -184,8 +197,8 @@ cd dating
 ### 1a) Install monorepo tooling
 
 ```bash
-# Install npm workspaces + root dev tooling (Prettier, Husky, lint-staged, Spectral).
-# `npm install` at the root is the entry point — do not run `npm install` inside backend/.
+# Installs npm workspaces + root dev tooling (Prettier, Husky, lint-staged, Spectral).
+# Run at the root only — do not run `npm install` inside backend/.
 npm install
 
 # Install the Flutter SDK version pinned in .fvmrc
@@ -224,7 +237,9 @@ fvm flutter pub get
 fvm flutter run --dart-define=ENV=development
 ```
 
-> If you have a system-wide Flutter that matches `.fvmrc`, you can swap `fvm flutter` for `flutter`. FVM is recommended so contributors and CI converge on the same toolchain.
+> If you have a system-wide Flutter that matches `.fvmrc`, you can swap
+> `fvm flutter` for `flutter`. FVM is recommended so contributors and CI
+> converge on the same toolchain.
 
 ---
 
@@ -273,6 +288,9 @@ flutter run --dart-define=ENV=production
 ## API Overview
 
 Base URL: `http://localhost:5000/api/v1`
+
+The full contract lives in `docs/api/openapi.yaml`. The summary below is
+non-authoritative.
 
 ### Auth
 
@@ -331,7 +349,9 @@ Base URL: `http://localhost:5000/api/v1`
 
 ## Socket Events
 
-### Client -> Server
+The full event catalogue lives in `docs/api/asyncapi.yaml`.
+
+### Client → Server
 
 - `join-room` (`matchId`)
 - `leave-room` (`matchId`)
@@ -340,7 +360,7 @@ Base URL: `http://localhost:5000/api/v1`
 - `typing-stop` (`matchId`)
 - `mark-seen` (`{ matchId }`)
 
-### Server -> Client
+### Server → Client
 
 - `new-message`
 - `messages-seen`
@@ -353,6 +373,14 @@ Base URL: `http://localhost:5000/api/v1`
 
 ## Scripts
 
+### Root (`package.json`)
+
+```bash
+npm run format         # Prettier write across the workspace
+npm run format:check   # Prettier check (used in CI / pre-commit)
+npm run lint:openapi   # Spectral lint for OpenAPI + AsyncAPI
+```
+
 ### Backend (`backend/package.json`)
 
 ```bash
@@ -362,17 +390,13 @@ npm run start:prod
 npm run start:cluster # pm2
 ```
 
-Note:
-
-- `npm run lint` and `npm test` are currently placeholders.
-
 ### Flutter (`reverse_match/`)
 
 ```bash
-flutter pub get
-flutter analyze
-flutter test
-flutter run --dart-define=ENV=development
+fvm flutter pub get
+fvm flutter analyze
+fvm flutter test
+fvm flutter run --dart-define=ENV=development
 ```
 
 ---
@@ -419,9 +443,8 @@ Current jobs:
 Cloud target: **AWS** (ECS Fargate + ElastiCache Redis + MongoDB Atlas + ECR + Secrets Manager).
 
 - Staging deploys automatically from `main` with a manual approval gate.
-- Production deployment is **not yet wired** — it is intentionally Phase 1
-  scope. See the `TODO(Phase-1.16)` block at the bottom of
-  `.github/workflows/cd.yml`.
+- Production deployment is intentionally not yet wired — see the
+  `TODO(Phase-1.16)` block at the bottom of `.github/workflows/cd.yml`.
 
 Key files:
 
@@ -433,7 +456,11 @@ Key files:
 - `docs/deployment/staging.md` — full runbook (bootstrap, deploy, rollback,
   logs, troubleshooting)
 
-Rollback: `gh workflow run cd.yml -f deploy_only=true -f image_tag=sha-<previous>`
+Rollback:
+
+```bash
+gh workflow run cd.yml -f deploy_only=true -f image_tag=sha-<previous>
+```
 
 For first-time setup steps, see [`docs/deployment/staging.md`](docs/deployment/staging.md).
 
@@ -447,8 +474,8 @@ Before release, complete these:
 2. Add Flutter integration/widget tests beyond smoke test.
 3. Configure Android release signing and production application ID.
 4. Configure iOS production signing and capability settings.
-5. Enable Firebase in Flutter app if push notifications are required.
-6. Enable Sentry in Flutter app if crash tracking is required.
+5. Enable Firebase in the Flutter app if push notifications are required.
+6. Enable Sentry in the Flutter app if crash tracking is required.
 7. Set real legal URLs for privacy policy and terms.
 8. Configure deep-link handling on Android/iOS for boost return URLs.
 9. Secure and rotate secrets using your secret manager.
@@ -468,7 +495,7 @@ cmd /c npm run dev
 
 ### Flutter command not found
 
-Install Flutter SDK and ensure `flutter/bin` is on PATH.
+Install the Flutter SDK and ensure `flutter/bin` is on PATH, or use `fvm flutter`.
 
 ### Redis unavailable in development
 
@@ -480,7 +507,7 @@ Check `CLOUDINARY_*` environment variables in `backend/.env`.
 
 ### OTP emails not sending
 
-In development without SMTP config, OTP is logged to backend console.
+In development without SMTP config, OTP is logged to the backend console.
 
 ### Flutter asset path errors
 
@@ -488,13 +515,6 @@ If Flutter reports missing `assets/images/` or `assets/lottie/`, either:
 
 1. Create those directories, or
 2. Remove/update those entries in `reverse_match/pubspec.yaml`.
-
----
-
-## Additional Documentation
-
-- Full implementation walkthrough: `COMPLETE_CODE_EXPLANATION.txt`
-- Original product requirements: `New Text Document.txt`
 
 ---
 

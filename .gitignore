@@ -47,6 +47,7 @@ logs/
 .cache/
 tmp/
 temp/
+.tmp_*
 
 # Flutter / Dart generated files
 reverse_match/.dart_tool/
