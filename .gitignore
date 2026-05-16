@@ -12,6 +12,9 @@ ehthumbs.db
 .gemini/
 *.swp
 *.swo
+*.iml
+*.ipr
+*.iws
 
 # Environment files (never commit secrets)
 .env
@@ -21,8 +24,11 @@ ehthumbs.db
 .env.local
 *.env.local
 backend/.env
+backend/.env.*
+!backend/.env.example
 reverse_match/.env
 reverse_match/.env.*
+!reverse_match/.env.example
 
 # Secrets / keys
 *.pem
@@ -34,10 +40,13 @@ reverse_match/.env.*
 # Android signing
 reverse_match/android/key.properties
 
-# Firebase credentials (downloaded from console)
+# Firebase / Google service credentials (downloaded from console, never commit)
 reverse_match/android/app/google-services.json
 reverse_match/ios/Runner/GoogleService-Info.plist
 backend/serviceAccountKey.json
+backend/firebase-service-account.json
+**/firebase-service-account.json
+**/serviceAccountKey.json
 
 # Logs
 *.log
@@ -48,6 +57,15 @@ logs/
 tmp/
 temp/
 .tmp_*
+.eslintcache
+*.tsbuildinfo
+
+# Test coverage and build outputs
+coverage/
+.nyc_output/
+*.lcov
+dist/
+build/
 
 # Flutter / Dart generated files
 reverse_match/.dart_tool/
@@ -57,12 +75,20 @@ reverse_match/.pub/
 reverse_match/.pub-cache/
 reverse_match/build/
 reverse_match/coverage/
+**/doc/api/
+app.*.symbols
+app.*.map.json
 
-# Local SDK / tool checkouts
-flutter/
+# Local SDK / tool checkouts (root-level Flutter SDK only; do not match
+# Flutter's per-platform `flutter/` and `Flutter/` sub-directories)
+/flutter/
 .fvm/
 
 # Node.js / monorepo tooling
 node_modules/
 .husky/_
 .lint-staged-cache/
+
+# Python (if any helper scripts land later)
+__pycache__/
+*.pyc
