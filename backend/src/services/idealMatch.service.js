@@ -4,6 +4,8 @@ const Like = require('../models/Like');
 const Block = require('../models/Block');
 const Match = require('../models/Match');
 const AppError = require('../utils/AppError');
+const logger = require('../utils/logger');
+const mlMatchClient = require('./mlMatch.client');
 const { cacheGet, cacheSet } = require('../utils/cache');
 const { USER_PROJECTION } = require('../utils/userProjection');
 
@@ -206,8 +208,67 @@ const resolveTargetGenders = (viewer) => {
 };
 
 /**
+ * ML-service-backed ideal match. Returns the same shape as the legacy path
+ * (topMatch, score, alternates, commonalities) so the caller is unaware
+ * which engine produced it. Returns null on any non-fatal failure so the
+ * caller can fall back to the legacy cosine encoder.
+ */
+const getIdealMatchFromMl = async (userId, limit, viewer) => {
+  if (!mlMatchClient.isEnabled()) return null;
+
+  const k = Math.max(limit, 5);
+  const result = await mlMatchClient.recommend(userId, k);
+  if (!result || !Array.isArray(result.recommendations) || result.recommendations.length === 0) {
+    return null;
+  }
+
+  // Hydrate the top + alternates from Mongo so the response carries the same
+  // user projection the rest of the app expects. Doing this in one $in query
+  // keeps it O(1) round-trips.
+  const ids = result.recommendations
+    .map((r) => r.candidate_id)
+    .filter(Boolean)
+    .slice(0, limit)
+    .map((id) => new mongoose.Types.ObjectId(id));
+
+  if (ids.length === 0) return null;
+
+  const docs = await User.find({ _id: { $in: ids } }).select(USER_PROJECTION).lean();
+  const byId = new Map(docs.map((d) => [d._id.toString(), d]));
+
+  const ordered = result.recommendations
+    .map((r) => byId.get(r.candidate_id))
+    .filter(Boolean);
+
+  if (ordered.length === 0) return null;
+
+  const topRec = result.recommendations[0];
+  return {
+    topMatch: ordered[0],
+    score: Number((topRec.score || 0).toFixed(4)),
+    alternates: ordered.slice(1, limit).map((u, i) => {
+      const rec = result.recommendations[i + 1];
+      return {
+        user: u,
+        score: Number((rec?.score || 0).toFixed(4)),
+      };
+    }),
+    commonalities: topRec.reasons && topRec.reasons.length > 0
+      ? topRec.reasons
+      : computeCommonalities(viewer, ordered[0]),
+    source: 'ml',
+  };
+};
+
+/**
  * Compute the ideal match for `userId`.
  * Returns { topMatch, score, alternates, commonalities }.
+ *
+ * Two engines, picked at runtime:
+ *   1. ML service (Python, FAISS + SentenceTransformer) — when ML_SERVICE_URL
+ *      is set. Higher quality, learns from swipe behavior.
+ *   2. Legacy one-hot cosine over taxonomies (this file) — fallback when ML
+ *      is disabled, unreachable, or returns no candidates.
  */
 const getIdealMatch = async (userId, limit = 5) => {
   const cacheKey = `ideal:${userId}:${limit}`;
@@ -216,6 +277,17 @@ const getIdealMatch = async (userId, limit = 5) => {
 
   const viewer = await User.findById(userId).lean();
   if (!viewer) throw new AppError('User not found', 404);
+
+  // Try ML first. Any null/throw degrades to the legacy path below.
+  try {
+    const mlResult = await getIdealMatchFromMl(userId, limit, viewer);
+    if (mlResult) {
+      await cacheSet(cacheKey, mlResult, FEATURE_CACHE_TTL);
+      return mlResult;
+    }
+  } catch (err) {
+    logger.warn({ event: 'idealMatch.ml_failed', err: err.message }, 'ML path failed, falling back');
+  }
 
   const targetGenders = resolveTargetGenders(viewer);
 

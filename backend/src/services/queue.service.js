@@ -5,6 +5,7 @@ const User = require('../models/User');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
 const { sendPush } = require('./notification.service');
+const mlMatchClient = require('./mlMatch.client');
 const { bumpCacheVersion } = require('../utils/cache');
 const { USER_PROJECTION } = require('../utils/userProjection');
 const withTransaction = require('../utils/withTransaction');
@@ -187,6 +188,12 @@ const accept = async (userId, likeId) => {
     matchId: matchId.toString(),
   });
 
+  // Feed mutual-match signal into the ML service for BOTH sides — the
+  // match is the strongest positive signal we have, much stronger than a
+  // one-sided like. Fire-and-forget on both ends.
+  mlMatchClient.recordEvent(like.fromUser, userId, 'match');
+  mlMatchClient.recordEvent(userId, like.fromUser, 'match');
+
   // Populate the match with the full UserModel projection for the response.
   const populated = await Match.aggregate([
     { $match: { _id: matchId } },
@@ -223,6 +230,11 @@ const reject = async (userId, likeId) => {
 
   like.status = 'rejected';
   await like.save();
+
+  // The boy rejected the girl's like — that's a negative signal toward
+  // the girl's recommendation profile. We feed it from the girl's side
+  // (her preference signal weakens; she'll see fewer similar boys).
+  mlMatchClient.recordEvent(like.fromUser, userId, 'left_swipe');
 
   return {};
 };

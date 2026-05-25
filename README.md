@@ -12,6 +12,7 @@ This repository contains:
 
 - `backend/` — Node.js + Express API + Socket.IO
 - `reverse_match/` — Flutter mobile app (Android + iOS + desktop/web scaffolding)
+- `ml-service/` — Python FastAPI matchmaker (SentenceTransformer + FAISS + bandit). See [ml-service/README.md](ml-service/README.md).
 - `docs/api/` — OpenAPI 3.1 + AsyncAPI specs (single source of truth)
 - `infra/` — Terraform for AWS
 - `packages/` — shared packages (e.g. `api-client-dart`)

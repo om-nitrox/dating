@@ -27,6 +27,9 @@ services:
       - SMTP_PASS=${SMTP_PASS}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - FIREBASE_SERVICE_ACCOUNT_PATH=${FIREBASE_SERVICE_ACCOUNT_PATH}
+      - ML_SERVICE_URL=http://ml-service:8000
+      - ML_SERVICE_API_KEY=${ML_SERVICE_API_KEY}
+      - ML_SERVICE_TIMEOUT_MS=${ML_SERVICE_TIMEOUT_MS:-2500}
     depends_on:
       mongo:
         condition: service_healthy
@@ -97,6 +100,41 @@ services:
       retries: 5
       start_period: 10s
 
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    ports:
+      - "${ML_SERVICE_PORT:-8000}:8000"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/reverse_match
+      - ML_SERVICE_API_KEY=${ML_SERVICE_API_KEY}
+      - EMBED_MODEL=${EMBED_MODEL:-all-MiniLM-L6-v2}
+      - TEXT_EMBED_DIM=${TEXT_EMBED_DIM:-384}
+      - CANDIDATES_K=${CANDIDATES_K:-100}
+      - TOP_K=${TOP_K:-20}
+      - FAISS_NLIST=${FAISS_NLIST:-100}
+      - IDEAL_MATCH_MIN_SWIPES=${IDEAL_MATCH_MIN_SWIPES:-20}
+      - IDEAL_MATCH_MIN_RIGHT=${IDEAL_MATCH_MIN_RIGHT:-10}
+      - EXPLORE_WEIGHT=${EXPLORE_WEIGHT:-0.2}
+      - TIME_DECAY_HALF_LIFE=${TIME_DECAY_HALF_LIFE:-7.0}
+      - AUTO_REBUILD_ON_BOOT=${AUTO_REBUILD_ON_BOOT:-true}
+      - REBUILD_MIN_USERS=${REBUILD_MIN_USERS:-1}
+      - CORS_ORIGINS=${ML_CORS_ORIGINS:-*}
+      - LOG_LEVEL=${ML_LOG_LEVEL:-INFO}
+    volumes:
+      - ml_data:/app/data
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
   redis:
     image: redis:7-alpine
     ports:
@@ -114,3 +152,4 @@ services:
 volumes:
   mongo_data:
   redis_data:
+  ml_data:

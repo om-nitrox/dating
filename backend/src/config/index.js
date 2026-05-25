@@ -133,6 +133,13 @@ const baseSchema = z.object({
 
   // Phase 1.2: media reaper cron (every N minutes).
   MEDIA_REAPER_INTERVAL_MS: positiveInt.default(5 * 60 * 1000),
+
+  // -------- ML matchmaker microservice --------
+  // Empty ML_SERVICE_URL disables the integration; idealMatch.service.js
+  // then falls back to the legacy one-hot cosine encoder.
+  ML_SERVICE_URL: optionalString,
+  ML_SERVICE_API_KEY: optionalString,
+  ML_SERVICE_TIMEOUT_MS: positiveInt.default(2500),
 });
 
 // Per Phase 1.6 brief — these are the env vars that MUST be set for a safe
@@ -317,6 +324,11 @@ const config = Object.freeze({
 
   // Phase 1.2
   mediaReaperIntervalMs: parsed.MEDIA_REAPER_INTERVAL_MS,
+
+  // ML matchmaker
+  mlServiceUrl: parsed.ML_SERVICE_URL || '',
+  mlServiceApiKey: parsed.ML_SERVICE_API_KEY || '',
+  mlServiceTimeoutMs: parsed.ML_SERVICE_TIMEOUT_MS,
 });
 
 module.exports = config;

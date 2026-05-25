@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Like = require('../models/Like');
 const Block = require('../models/Block');
 const AppError = require('../utils/AppError');
+const mlMatchClient = require('./mlMatch.client');
 const { sendPush } = require('./notification.service');
 const {
   cacheGet, cacheSet, getCacheVersion, bumpCacheVersion,
@@ -301,6 +302,11 @@ const like = async (fromUserId, toUserId) => {
     type: 'new_like',
   });
 
+  // Fire-and-forget: tell the ML service the girl liked this boy so future
+  // recommendations bias toward similar profiles. Failures are swallowed
+  // inside the client — never blocks the swipe.
+  mlMatchClient.recordEvent(fromUserId, toUserId, 'right_swipe');
+
   return { message: 'Like sent' };
 };
 
@@ -327,6 +333,9 @@ const skip = async (fromUserId, toUserId) => {
     bumpCacheVersion('feed', fromUserId),
     bumpCacheVersion('exclude', fromUserId),
   ]);
+
+  // Fire-and-forget: feed the negative signal into the ML service.
+  mlMatchClient.recordEvent(fromUserId, toUserId, 'left_swipe');
 
   return { message: 'Skipped' };
 };
