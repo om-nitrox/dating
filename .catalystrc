@@ -1,0 +1,29 @@
+{
+  "defaults": {
+    "project": 1
+  },
+  "actives": {
+    "project": 1,
+    "env": 1
+  },
+  "projects": [
+    {
+      "idx": 1,
+      "id": "37719000000284044",
+      "name": "Reverse-Match",
+      "domain": {
+        "id": "50042773997",
+        "name": "reverse-match-60069018829.development"
+      },
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 1,
+          "id": "60069018829",
+          "name": "Development",
+          "type": 3
+        }
+      ]
+    }
+  ]
+}
