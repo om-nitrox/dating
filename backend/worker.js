@@ -65,9 +65,14 @@ const startMetricsServer = () => new Promise((resolve, reject) => {
   });
 
   httpServer.on('error', reject);
-  httpServer.listen(config.workerMetricsPort, () => {
+  // On Zoho Catalyst AppSail the app MUST bind to the injected
+  // `X_ZOHO_CATALYST_LISTEN_PORT` so the platform can route health probes and
+  // the keep-alive cron can reach `/health`. Elsewhere we keep the dedicated
+  // Prometheus metrics port.
+  const listenPort = process.env.X_ZOHO_CATALYST_LISTEN_PORT || config.workerMetricsPort;
+  httpServer.listen(listenPort, () => {
     logger.info(
-      { port: config.workerMetricsPort },
+      { port: listenPort },
       'Worker metrics server listening on /metrics',
     );
     resolve();

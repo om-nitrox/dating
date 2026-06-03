@@ -33,10 +33,14 @@ RUN rm -rf .env .env.* tests/ *.test.js nodemon.json
 
 USER appuser
 
-# Worker exposes a Prometheus /metrics endpoint, not the api port.
+# Worker exposes a /health + Prometheus /metrics endpoint. On Zoho Catalyst
+# AppSail it binds the injected X_ZOHO_CATALYST_LISTEN_PORT (worker.js); 9091
+# is the local/docker-compose default. EXPOSE is informational only.
 EXPOSE 9091
 
+# Probe the runtime port (AppSail-injected, else 9091). Runs under /bin/sh so
+# the env var is interpolated.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:9091/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider "http://localhost:${X_ZOHO_CATALYST_LISTEN_PORT:-9091}/health" || exit 1
 
 CMD ["node", "worker.js"]

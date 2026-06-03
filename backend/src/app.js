@@ -211,6 +211,10 @@ app.get('/api/v1/config', (req, res) => {
   });
 });
 
+// Internal cron endpoints (Catalyst Cron → authenticated via X-Cron-Secret).
+// Mounted above /api/v1 so it isn't guarded by the API's auth middleware.
+app.use('/internal/cron', require('./routes/internal.routes'));
+
 // API routes
 app.use('/api/v1', routes);
 

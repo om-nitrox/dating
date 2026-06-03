@@ -23,9 +23,14 @@ RUN rm -rf .env .env.* tests/ *.test.js nodemon.json
 
 USER appuser
 
+# Informational only. On Zoho Catalyst AppSail the actual listen port is
+# injected at runtime via X_ZOHO_CATALYST_LISTEN_PORT (src/config maps it to
+# PORT); 5000 is the local/docker-compose default.
 EXPOSE 5000
 
+# Probe the runtime port (AppSail-injected, else 5000). Runs under /bin/sh so
+# the env var is interpolated.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:5000/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider "http://localhost:${X_ZOHO_CATALYST_LISTEN_PORT:-5000}/health" || exit 1
 
 CMD ["node", "server.js"]

@@ -33,8 +33,17 @@ const path = require('path');
 const { z } = require('zod');
 
 // Load .env once. In production deploys, env is typically injected by the
-// platform (ECS task def, k8s secrets) — `.env` is a no-op there.
+// platform (ECS task def, k8s secrets, Zoho Catalyst env_variables) — `.env`
+// is a no-op there.
 dotenv.config({ path: path.join(__dirname, '../../.env') });
+
+// Zoho Catalyst AppSail injects the port to bind on via
+// `X_ZOHO_CATALYST_LISTEN_PORT` rather than `PORT`. Coalesce it into `PORT`
+// before validation so `config.port` (and `server.js`) bind correctly on
+// AppSail while still honoring an explicit `PORT` elsewhere.
+if (process.env.X_ZOHO_CATALYST_LISTEN_PORT) {
+  process.env.PORT = process.env.X_ZOHO_CATALYST_LISTEN_PORT;
+}
 
 // -------- helpers --------
 
@@ -102,8 +111,15 @@ const baseSchema = z.object({
   SMTP_USER: optionalString,
   SMTP_PASS: optionalString,
   FIREBASE_SERVICE_ACCOUNT_PATH: optionalString,
+  // Alternative to the file path for env-only secret stores (e.g. Zoho
+  // Catalyst AppSail): the raw service-account JSON as a single string.
+  FIREBASE_SERVICE_ACCOUNT_JSON: optionalString,
   OTP_PEPPER: optionalString,
   OTP_EXPIRY_MINUTES: z.coerce.number().int().positive().optional(),
+  // Shared secret guarding the /internal/cron/* endpoints that Catalyst Cron
+  // calls (sent as the `X-Cron-Secret` header). When unset, those endpoints
+  // refuse to run.
+  CRON_SECRET: optionalString,
   APP_BASE_URL: optionalString,
   APP_DEEP_LINK_SCHEME: optionalString,
   PRIVACY_POLICY_URL: optionalString,
@@ -155,7 +171,8 @@ const PROD_REQUIRED = [
   ['SMTP_HOST', 'Email transport for OTPs.'],
   ['SMTP_USER', 'Email transport for OTPs.'],
   ['SMTP_PASS', 'Email transport for OTPs.'],
-  ['FIREBASE_SERVICE_ACCOUNT_PATH', 'Firebase Admin SDK — required for FCM push notifications.'],
+  // Satisfied by EITHER the file path OR the inline JSON (env-only platforms).
+  ['FIREBASE_SERVICE_ACCOUNT_PATH', 'Firebase Admin SDK — required for FCM push notifications. Provide FIREBASE_SERVICE_ACCOUNT_PATH (file) or FIREBASE_SERVICE_ACCOUNT_JSON (inline).', ['FIREBASE_SERVICE_ACCOUNT_JSON']],
   ['OTP_PEPPER', 'Dedicated HMAC key for OTP hash storage — without it OTP rows fall back to JWT_ACCESS_SECRET, coupling secret rotation.'],
   ['APP_BASE_URL', 'Public backend URL — used to build Stripe success/cancel URLs.'],
   ['CORS_ORIGINS', 'Comma-separated allow-list of browser origins. Without it production CORS rejects everything.'],
@@ -189,11 +206,15 @@ const validateConfig = (env = process.env, opts = {}) => {
 
   const parsed = parseResult.data;
 
+  const isSet = (v) => !(v === undefined || v === null || v === '');
+
   const prodMissing = [];
   const warnings = [];
-  for (const [key, desc] of PROD_REQUIRED) {
-    const v = parsed[key];
-    if (v === undefined || v === null || v === '') {
+  for (const [key, desc, alternatives = []] of PROD_REQUIRED) {
+    // A requirement is satisfied if the primary key OR any listed alternative
+    // is set (e.g. Firebase: file path OR inline JSON).
+    const satisfied = isSet(parsed[key]) || alternatives.some((alt) => isSet(parsed[alt]));
+    if (!satisfied) {
       prodMissing.push(key);
       warnings.push(`${key} — ${desc}`);
     }
@@ -262,7 +283,7 @@ const parseJwtSeconds = (raw) => {
   return n * factor;
 };
 
-const config = Object.freeze({
+const config = {
   port: parsed.PORT,
   nodeEnv: parsed.NODE_ENV,
   mongoUri: parsed.MONGO_URI,
@@ -281,12 +302,14 @@ const config = Object.freeze({
   smtpPass: parsed.SMTP_PASS,
   otpExpiryMinutes: parsed.OTP_EXPIRY_MINUTES || 5,
   otpPepper: parsed.OTP_PEPPER || '',
+  cronSecret: parsed.CRON_SECRET || '',
 
   cloudinaryCloudName: parsed.CLOUDINARY_CLOUD_NAME,
   cloudinaryApiKey: parsed.CLOUDINARY_API_KEY,
   cloudinaryApiSecret: parsed.CLOUDINARY_API_SECRET,
 
   firebaseServiceAccountPath: parsed.FIREBASE_SERVICE_ACCOUNT_PATH,
+  firebaseServiceAccountJson: parsed.FIREBASE_SERVICE_ACCOUNT_JSON || '',
 
   stripeSecretKey: parsed.STRIPE_SECRET_KEY,
   stripeWebhookSecret: parsed.STRIPE_WEBHOOK_SECRET,
@@ -329,9 +352,15 @@ const config = Object.freeze({
   mlServiceUrl: parsed.ML_SERVICE_URL || '',
   mlServiceApiKey: parsed.ML_SERVICE_API_KEY || '',
   mlServiceTimeoutMs: parsed.ML_SERVICE_TIMEOUT_MS,
-});
+};
 
-module.exports = config;
-// Exported for `npm run check:env` and unit tests.
-module.exports.validateConfig = validateConfig;
-module.exports.PROD_REQUIRED = PROD_REQUIRED;
+// Attach the validator + table as non-enumerable helpers, THEN freeze. Doing
+// this before the freeze matters: the previous code froze `config` first and
+// then assigned `module.exports.validateConfig`, which silently no-ops on a
+// frozen object in CommonJS sloppy mode and left `validateConfig` undefined
+// (this broke `npm run check:env`). Non-enumerable keeps them off the data
+// surface while still exposing them to the check script and unit tests.
+Object.defineProperty(config, 'validateConfig', { value: validateConfig, enumerable: false });
+Object.defineProperty(config, 'PROD_REQUIRED', { value: PROD_REQUIRED, enumerable: false });
+
+module.exports = Object.freeze(config);

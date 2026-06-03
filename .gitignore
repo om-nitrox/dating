@@ -92,3 +92,4 @@ node_modules/
 # Python (if any helper scripts land later)
 __pycache__/
 *.pyc
+.claude/

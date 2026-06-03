@@ -25,9 +25,13 @@ COPY scripts /app/scripts
 
 RUN mkdir -p /app/data
 
+# Informational only. On Zoho Catalyst AppSail the real port is injected at
+# runtime via X_ZOHO_CATALYST_LISTEN_PORT (see CMD below).
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -fsS http://localhost:8000/health || exit 1
+    CMD curl -fsS "http://localhost:${X_ZOHO_CATALYST_LISTEN_PORT:-8000}/health" || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Bind uvicorn to the AppSail-provided port when present, else default to 8000
+# for local docker-compose. Shell form so the env var is interpolated.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${X_ZOHO_CATALYST_LISTEN_PORT:-8000} --workers 1"]

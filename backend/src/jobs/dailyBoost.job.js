@@ -2,6 +2,13 @@
 // The Redis lock below currently provides single-leader semantics inside the
 // api cluster; once on BullMQ we'll use a repeatable job + a single worker
 // instance instead, and drop node-cron entirely from the api process.
+//
+// Deployment note (Zoho Catalyst AppSail): AppSail instances are ephemeral
+// (recycled ~every 5 min) so an in-process node-cron tick is NOT guaranteed to
+// fire at midnight/top-of-hour. The work bodies are therefore extracted into
+// `runDailyBoost()` / `clearExpiredBoosts()` and exposed via authenticated
+// `/internal/cron/*` endpoints (see src/routes/internal.routes.js) that
+// Catalyst Cron calls on a schedule. node-cron remains wired for local dev.
 const cron = require('node-cron');
 const User = require('../models/User');
 const logger = require('../utils/logger');
@@ -45,6 +52,77 @@ const acquireLock = async (lockKey, ttlSeconds) => {
   return inst === undefined || inst === '0';
 };
 
+/**
+ * Increment `daysWithoutMatch` for all active, profile-complete male users.
+ * Batched in BATCH_SIZE chunks to bound memory and lock time.
+ * Idempotent-per-day is the CALLER's responsibility (run it once daily).
+ *
+ * @returns {Promise<{ totalModified: number }>}
+ */
+const runDailyBoost = async () => {
+  let totalModified = 0;
+  let hasMore = true;
+  let lastId = null;
+
+  while (hasMore) {
+    const query = {
+      gender: 'male',
+      isActive: true,
+      isProfileComplete: true,
+    };
+
+    if (lastId) {
+      query._id = { $gt: lastId };
+    }
+
+    const users = await User.find(query)
+      .select('_id')
+      .sort({ _id: 1 })
+      .limit(BATCH_SIZE)
+      .lean();
+
+    if (users.length === 0) {
+      hasMore = false;
+      break;
+    }
+
+    const ids = users.map((u) => u._id);
+    const result = await User.updateMany(
+      { _id: { $in: ids } },
+      { $inc: { daysWithoutMatch: 1 } },
+    );
+
+    totalModified += result.modifiedCount;
+    lastId = ids[ids.length - 1];
+
+    if (users.length < BATCH_SIZE) {
+      hasMore = false;
+    }
+  }
+
+  logger.info({ totalModified }, 'Daily boost job completed');
+  return { totalModified };
+};
+
+/**
+ * Clear paid boosts whose expiry has passed.
+ *
+ * @returns {Promise<{ cleared: number }>}
+ */
+const clearExpiredBoosts = async () => {
+  const result = await User.updateMany(
+    {
+      boostLevel: { $ne: 'none' },
+      boostExpiry: { $lt: new Date() },
+    },
+    { boostLevel: 'none', boostExpiry: null },
+  );
+  if (result.modifiedCount > 0) {
+    logger.info({ count: result.modifiedCount }, 'Cleared expired boosts');
+  }
+  return { cleared: result.modifiedCount };
+};
+
 const initCronJobs = () => {
   // Run daily at midnight UTC — increment daysWithoutMatch for all active males (batched).
   cron.schedule('0 0 * * *', async () => {
@@ -54,47 +132,7 @@ const initCronJobs = () => {
       return;
     }
     try {
-      let totalModified = 0;
-      let hasMore = true;
-      let lastId = null;
-
-      while (hasMore) {
-        const query = {
-          gender: 'male',
-          isActive: true,
-          isProfileComplete: true,
-        };
-
-        if (lastId) {
-          query._id = { $gt: lastId };
-        }
-
-        const users = await User.find(query)
-          .select('_id')
-          .sort({ _id: 1 })
-          .limit(BATCH_SIZE)
-          .lean();
-
-        if (users.length === 0) {
-          hasMore = false;
-          break;
-        }
-
-        const ids = users.map((u) => u._id);
-        const result = await User.updateMany(
-          { _id: { $in: ids } },
-          { $inc: { daysWithoutMatch: 1 } },
-        );
-
-        totalModified += result.modifiedCount;
-        lastId = ids[ids.length - 1];
-
-        if (users.length < BATCH_SIZE) {
-          hasMore = false;
-        }
-      }
-
-      logger.info({ totalModified }, 'Daily boost job completed');
+      await runDailyBoost();
     } catch (err) {
       logger.error({ err: err.message }, 'Daily boost job failed');
     }
@@ -106,16 +144,7 @@ const initCronJobs = () => {
     if (!gotLock) return;
 
     try {
-      const result = await User.updateMany(
-        {
-          boostLevel: { $ne: 'none' },
-          boostExpiry: { $lt: new Date() },
-        },
-        { boostLevel: 'none', boostExpiry: null },
-      );
-      if (result.modifiedCount > 0) {
-        logger.info({ count: result.modifiedCount }, 'Cleared expired boosts');
-      }
+      await clearExpiredBoosts();
     } catch (err) {
       logger.error({ err: err.message }, 'Clear expired boosts job failed');
     }
@@ -125,3 +154,6 @@ const initCronJobs = () => {
 };
 
 module.exports = initCronJobs;
+// Exposed for the Catalyst Cron HTTP endpoints (prod) and unit tests.
+module.exports.runDailyBoost = runDailyBoost;
+module.exports.clearExpiredBoosts = clearExpiredBoosts;

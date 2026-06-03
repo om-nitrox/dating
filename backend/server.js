@@ -41,8 +41,18 @@ const start = async () => {
   // Initialize Firebase (optional, fails gracefully)
   initFirebase();
 
-  // Start cron jobs (single-leader via Redis lock — see dailyBoost.job)
-  initCronJobs();
+  // Start in-process cron jobs (single-leader via Redis lock — see
+  // dailyBoost.job). On ephemeral hosts like Zoho Catalyst AppSail these
+  // ticks aren't reliable, so in production the work is driven externally by
+  // Catalyst Cron hitting /internal/cron/* instead. Opt back in with
+  // ENABLE_INPROCESS_CRON=true (e.g. a long-lived self-hosted/PM2 deploy).
+  const inProcessCron = config.nodeEnv !== 'production'
+    || process.env.ENABLE_INPROCESS_CRON === 'true';
+  if (inProcessCron) {
+    initCronJobs();
+  } else {
+    logger.info('In-process cron disabled in production; using Catalyst Cron → /internal/cron/*');
+  }
 
   server.listen(config.port, () => {
     logger.info({
