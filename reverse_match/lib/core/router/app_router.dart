@@ -11,26 +11,32 @@ import '../../features/boost/presentation/screens/boost_success_screen.dart';
 import '../../features/chat/presentation/screens/chat_screen.dart';
 import '../../features/home/presentation/screens/boy_home_screen.dart';
 import '../../features/home/presentation/screens/girl_home_screen.dart';
+import '../../features/ideal_match/presentation/screens/ideal_match_screen.dart';
 import '../../features/match/presentation/screens/matches_screen.dart';
 import '../../features/onboarding/presentation/screens/children_screen.dart';
 import '../../features/onboarding/presentation/screens/dating_preference_screen.dart';
+import '../../features/onboarding/presentation/screens/bio_screen.dart';
 import '../../features/onboarding/presentation/screens/dob_screen.dart';
 import '../../features/onboarding/presentation/screens/drinking_screen.dart';
 import '../../features/onboarding/presentation/screens/drugs_screen.dart';
 import '../../features/onboarding/presentation/screens/education_screen.dart';
 import '../../features/onboarding/presentation/screens/ethnicity_screen.dart';
+import '../../features/onboarding/presentation/screens/exercise_screen.dart';
 import '../../features/onboarding/presentation/screens/family_plans_screen.dart';
 import '../../features/onboarding/presentation/screens/gender_screen.dart';
 import '../../features/onboarding/presentation/screens/height_screen.dart';
 import '../../features/onboarding/presentation/screens/hometown_screen.dart';
 import '../../features/onboarding/presentation/screens/intentions_screen.dart';
+import '../../features/onboarding/presentation/screens/interests_screen.dart';
 import '../../features/onboarding/presentation/screens/job_screen.dart';
 import '../../features/onboarding/presentation/screens/languages_screen.dart';
 import '../../features/onboarding/presentation/screens/location_screen.dart';
 import '../../features/onboarding/presentation/screens/marijuana_screen.dart';
 import '../../features/onboarding/presentation/screens/name_screen.dart';
+import '../../features/onboarding/presentation/screens/notifications_screen.dart';
 import '../../features/onboarding/presentation/screens/orientation_screen.dart';
 import '../../features/onboarding/presentation/screens/photos_screen.dart';
+import '../../features/onboarding/presentation/screens/profile_preview_screen.dart';
 import '../../features/onboarding/presentation/screens/politics_screen.dart';
 import '../../features/onboarding/presentation/screens/preview_screen.dart';
 import '../../features/onboarding/presentation/screens/prompts_screen.dart';
@@ -42,12 +48,17 @@ import '../../features/onboarding/presentation/screens/smoking_screen.dart';
 import '../../features/onboarding/presentation/screens/tutorial_screen.dart';
 import '../../features/onboarding/presentation/screens/welcome_screen.dart';
 import '../../features/onboarding/presentation/screens/workplace_screen.dart';
+import '../../features/onboarding/presentation/screens/zodiac_screen.dart';
 import '../../features/profile/presentation/screens/edit_profile_screen.dart';
 import '../../features/profile_setup/presentation/screens/profile_setup_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/splash/presentation/screens/splash_screen.dart';
+import '../../features/verification/presentation/screens/admin_verification_queue_screen.dart';
+import '../../features/verification/presentation/screens/pending_verification_screen.dart';
+import '../../shared/models/user_model.dart';
 import '../network/connectivity_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/clay.dart';
 
 /// Root navigator key — exposed so non-widget code (FCM tap handlers, deep
 /// link service) can drive navigation without holding a BuildContext from a
@@ -56,12 +67,21 @@ final GlobalKey<NavigatorState> rootNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
+  // Re-run redirects on auth changes via a refreshListenable instead of
+  // rebuilding the whole GoRouter. The old `ref.watch(authProvider)` here
+  // recreated the entire GoRouter on every auth change, which churned the
+  // navigator / StatefulShell and left a black screen after logout or
+  // account deletion.
+  final authListenable = ValueNotifier<AuthState>(ref.read(authProvider));
+  ref.onDispose(authListenable.dispose);
+  ref.listen<AuthState>(authProvider, (_, next) => authListenable.value = next);
 
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: '/',
+    refreshListenable: authListenable,
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
       final path = state.matchedLocation;
       final isSplash = path == '/';
       final isPublicRoute = isSplash ||
@@ -70,9 +90,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           path.startsWith('/otp');
       final isOnboarding = path.startsWith('/onboarding');
 
-      // Stay on splash while auth is loading
-      if (authState is AuthInitial || authState is AuthLoading) {
+      // Stay on splash only during the genuine cold-start gate (AuthInitial).
+      // AuthLoading is set by sendOtp/verifyOtp/google while the user is
+      // ALREADY on /login or /otp — bouncing those to splash made the splash
+      // re-run checkAuthStatus(), which overwrote AuthOtpSent with
+      // AuthUnauthenticated and kicked the user back to /welcome. Let the
+      // login/otp screens show their own inline spinners instead.
+      if (authState is AuthInitial) {
         return isSplash ? null : '/';
+      }
+      if (authState is AuthLoading) {
+        return null;
       }
 
       if (authState is AuthUnauthenticated || authState is AuthError) {
@@ -90,12 +118,36 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (authState is AuthAuthenticated) {
         final user = authState.user;
 
+        // 1. Admins live entirely inside the verification queue — no feed,
+        //    matches, settings or onboarding. Pin every route there.
+        if (user.isAdmin) {
+          return path == '/admin/verification-queue'
+              ? null
+              : '/admin/verification-queue';
+        }
+
         // Redirect to onboarding if incomplete; allow any /onboarding/* route
         if (!user.isProfileComplete &&
             user.gender == null &&
             path != '/profile-setup' &&
             !isOnboarding) {
           return '/onboarding/name';
+        }
+
+        // 2. Girls must be admin-approved before entering the app. While
+        //    pending/rejected, keep them on the verification screen. Boys are
+        //    never gated. Allow /onboarding/* so a rejected girl can re-shoot
+        //    her selfie, and don't fire until onboarding produced a profile.
+        if (user.needsVerification &&
+            user.isProfileComplete &&
+            !isOnboarding &&
+            path != '/pending-verification') {
+          return '/pending-verification';
+        }
+
+        // An approved (or boy) user should never sit on the pending screen.
+        if (!user.needsVerification && path == '/pending-verification') {
+          return '/home';
         }
 
         // Redirect away from auth pages
@@ -122,15 +174,24 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/otp',
         builder: (_, state) {
-          final email = authState is AuthOtpSent
-              ? authState.email
-              : '';
+          final authState = ref.read(authProvider);
+          final email = authState is AuthOtpSent ? authState.email : '';
           return OtpScreen(email: email);
         },
       ),
       GoRoute(
         path: '/profile-setup',
         builder: (_, __) => const ProfileSetupScreen(),
+      ),
+      // Girl account-approval waiting screen
+      GoRoute(
+        path: '/pending-verification',
+        builder: (_, __) => const PendingVerificationScreen(),
+      ),
+      // Admin-only profile verification queue
+      GoRoute(
+        path: '/admin/verification-queue',
+        builder: (_, __) => const AdminVerificationQueueScreen(),
       ),
       // Hinge-style onboarding flow
       GoRoute(
@@ -160,6 +221,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/onboarding/location',
         builder: (_, __) => const LocationScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/notifications',
+        builder: (_, __) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/preview-card',
+        builder: (_, __) => const ProfilePreviewScreen(),
       ),
       GoRoute(
         path: '/onboarding/height',
@@ -206,6 +275,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const LanguagesScreen(),
       ),
       GoRoute(
+        path: '/onboarding/interests',
+        builder: (_, __) => const InterestsScreen(),
+      ),
+      GoRoute(
         path: '/onboarding/intentions',
         builder: (_, __) => const IntentionsScreen(),
       ),
@@ -230,12 +303,24 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const DrugsScreen(),
       ),
       GoRoute(
+        path: '/onboarding/exercise',
+        builder: (_, __) => const ExerciseScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/zodiac',
+        builder: (_, __) => const ZodiacScreen(),
+      ),
+      GoRoute(
         path: '/onboarding/photos',
         builder: (_, __) => const PhotosScreen(),
       ),
       GoRoute(
         path: '/onboarding/prompts',
         builder: (_, __) => const PromptsScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/bio',
+        builder: (_, __) => const BioScreen(),
       ),
       GoRoute(
         path: '/onboarding/selfie',
@@ -260,6 +345,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/home',
                 builder: (context, state) {
+                  final authState = ref.read(authProvider);
                   if (authState is AuthAuthenticated) {
                     final gender = authState.user.gender;
                     if (gender == 'female') return const GirlHomeScreen();
@@ -290,12 +376,21 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/chat/:matchId',
-        builder: (_, state) =>
-            ChatScreen(matchId: state.pathParameters['matchId']!),
+        builder: (_, state) {
+          final extra = state.extra;
+          return ChatScreen(
+            matchId: state.pathParameters['matchId']!,
+            other: extra is UserModel ? extra : null,
+          );
+        },
       ),
       GoRoute(
         path: '/edit-profile',
         builder: (_, __) => const EditProfileScreen(),
+      ),
+      GoRoute(
+        path: '/ideal-match',
+        builder: (_, __) => const IdealMatchScreen(),
       ),
       GoRoute(
         path: '/boost',
@@ -322,7 +417,10 @@ class _MainShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final connectivity = ref.watch(connectivityProvider);
 
+    final index = _calculateIndex(context);
     return Scaffold(
+      extendBody: true,
+      backgroundColor: Clay.base(context),
       body: Column(
         children: [
           // Offline banner
@@ -340,10 +438,10 @@ class _MainShell extends ConsumerWidget {
           Expanded(child: child),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _calculateIndex(context),
-        onDestinationSelected: (index) {
-          switch (index) {
+      bottomNavigationBar: _ClayNavBar(
+        index: index,
+        onTap: (i) {
+          switch (i) {
             case 0:
               context.go('/home');
             case 1:
@@ -352,23 +450,6 @@ class _MainShell extends ConsumerWidget {
               context.go('/settings');
           }
         },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.local_fire_department_outlined),
-            selectedIcon: Icon(Icons.local_fire_department),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
-            label: 'Matches',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
       ),
     );
   }
@@ -378,5 +459,83 @@ class _MainShell extends ConsumerWidget {
     if (location.startsWith('/matches')) return 1;
     if (location.startsWith('/settings')) return 2;
     return 0;
+  }
+}
+
+/// Floating claymorphic bottom navigation bar.
+class _ClayNavBar extends StatelessWidget {
+  final int index;
+  final ValueChanged<int> onTap;
+
+  const _ClayNavBar({required this.index, required this.onTap});
+
+  static const _items = [
+    (Icons.local_fire_department_rounded, 'Home'),
+    (Icons.chat_bubble_rounded, 'Matches'),
+    (Icons.person_rounded, 'Profile'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      child: ClayContainer(
+        borderRadius: 28,
+        depth: 0.9,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(_items.length, (i) {
+            final selected = i == index;
+            final (icon, label) = _items[i];
+            return Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onTap(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOut,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    gradient: selected
+                        ? const LinearGradient(
+                            colors: [AppColors.grape, AppColors.primary],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        icon,
+                        size: 22,
+                        color: selected
+                            ? Colors.white
+                            : Theme.of(context).textTheme.bodyMedium?.color,
+                      ),
+                      if (selected) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
   }
 }

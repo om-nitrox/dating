@@ -10,34 +10,42 @@ class EthnicityScreen extends ConsumerWidget {
   const EthnicityScreen({super.key});
 
   static const _options = [
-    'Asian',
     'Black/African Descent',
+    'East Asian',
     'Hispanic/Latino',
     'Middle Eastern',
     'Native American',
     'Pacific Islander',
     'South Asian',
+    'Southeast Asian',
     'White/Caucasian',
     'Other',
+    'Prefer not to say',
   ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selected = ref.watch(onboardingProvider).ethnicity;
+    final data = ref.watch(onboardingProvider);
+    final selected = data.ethnicity;
 
     void next() =>
         context.push(OnboardingSteps.next('/onboarding/ethnicity')!);
 
     return OnboardingScaffold(
-      title: 'What is your ethnicity?',
-      subtitle: 'Select up to 3. This is optional.',
+      title: 'How would you\ndescribe your ethnicity?',
+      subtitle: 'Select all that apply.',
       progress: OnboardingSteps.progress('/onboarding/ethnicity'),
+      useCircleNext: true,
+      visibility: OnboardingVisibility(
+        visible: data.ethnicityVisible,
+        onChanged: (v) =>
+            ref.read(onboardingProvider.notifier).setEthnicityVisible(v),
+      ),
       onNext: next,
       onSkip: next,
       child: MultiSelectList(
         options: _options,
         selected: selected,
-        maxSelections: 3,
         onChange: (list) =>
             ref.read(onboardingProvider.notifier).setEthnicity(list),
       ),

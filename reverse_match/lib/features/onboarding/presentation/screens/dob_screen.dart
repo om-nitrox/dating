@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_theme.dart';
 import '../onboarding_steps.dart';
 import '../providers/onboarding_provider.dart';
 import '../widgets/onboarding_scaffold.dart';
 
+/// Hinge-style birthday entry — three side-by-side boxes (Month / Day / Year).
+/// On full + valid entry, a bottom sheet confirms the user's age.
 class DobScreen extends ConsumerStatefulWidget {
   const DobScreen({super.key});
 
@@ -14,34 +18,60 @@ class DobScreen extends ConsumerStatefulWidget {
 }
 
 class _DobScreenState extends ConsumerState<DobScreen> {
-  DateTime? _dob;
+  final _monthCtl = TextEditingController();
+  final _dayCtl = TextEditingController();
+  final _yearCtl = TextEditingController();
+  final _monthFocus = FocusNode();
+  final _dayFocus = FocusNode();
+  final _yearFocus = FocusNode();
+  bool _confirmed = false;
 
   @override
   void initState() {
     super.initState();
-    _dob = ref.read(onboardingProvider).dob;
+    final dob = ref.read(onboardingProvider).dob;
+    if (dob != null) {
+      _monthCtl.text = dob.month.toString().padLeft(2, '0');
+      _dayCtl.text = dob.day.toString().padLeft(2, '0');
+      _yearCtl.text = dob.year.toString();
+      _confirmed = true;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _monthFocus.requestFocus();
+    });
   }
 
-  Future<void> _pickDate() async {
-    final now = DateTime.now();
-    final initial = _dob ?? DateTime(now.year - 22, now.month, now.day);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(1950),
-      lastDate: DateTime(now.year - 18, now.month, now.day),
-      helpText: 'Date of birth',
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(primary: AppColors.primary),
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) setState(() => _dob = picked);
+  @override
+  void dispose() {
+    for (final c in [_monthCtl, _dayCtl, _yearCtl]) {
+      c.dispose();
+    }
+    for (final f in [_monthFocus, _dayFocus, _yearFocus]) {
+      f.dispose();
+    }
+    super.dispose();
   }
 
-  int? _ageFromDob(DateTime? dob) {
+  DateTime? get _dob {
+    final m = int.tryParse(_monthCtl.text);
+    final d = int.tryParse(_dayCtl.text);
+    final y = int.tryParse(_yearCtl.text);
+    if (m == null || d == null || y == null) return null;
+    if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1900 || y > DateTime.now().year) {
+      return null;
+    }
+    try {
+      final dt = DateTime(y, m, d);
+      // Reject out-of-range days (e.g. Feb 30 normalizes forward in Dart).
+      if (dt.month != m || dt.day != d) return null;
+      return dt;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int? get _age {
+    final dob = _dob;
     if (dob == null) return null;
     final now = DateTime.now();
     var a = now.year - dob.year;
@@ -52,19 +82,48 @@ class _DobScreenState extends ConsumerState<DobScreen> {
     return a;
   }
 
+  Future<void> _openAgeSheet() async {
+    final age = _age;
+    if (age == null) return;
+    FocusScope.of(context).unfocus();
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isDismissible: false,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _AgeConfirmSheet(age: age, eligible: age >= 18),
+    );
+
+    if (!mounted) return;
+    if (confirmed == true && age >= 18) {
+      setState(() => _confirmed = true);
+    } else {
+      // User tapped "Edit" — re-focus the day box for quick correction.
+      _dayFocus.requestFocus();
+    }
+  }
+
+  void _onDigitChanged(int field, String value) {
+    setState(() {});
+    if (field == 0 && value.length == 2) _dayFocus.requestFocus();
+    if (field == 1 && value.length == 2) _yearFocus.requestFocus();
+    if (field == 2 && value.length == 4) {
+      // Full → show confirm sheet.
+      if (_dob != null) _openAgeSheet();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final age = _ageFromDob(_dob);
-    final canProceed = age != null && age >= 18;
-    final dobStr = _dob == null
-        ? 'Tap to select'
-        : '${_dob!.day.toString().padLeft(2, '0')}/${_dob!.month.toString().padLeft(2, '0')}/${_dob!.year}';
+    final age = _age;
+    final canProceed = _confirmed && age != null && age >= 18;
 
     return OnboardingScaffold(
-      title: "When's your birthday?",
-      subtitle: 'You must be 18+ to use Reverse Match.',
-      whyText:
-          'We show your age on your profile, not your birthday. You must be 18 or older to continue.',
+      title: "When's your\nbirthday?",
+      subtitle: "We'll only show your age on your profile.",
       progress: OnboardingSteps.progress('/onboarding/dob'),
       onNext: canProceed
           ? () {
@@ -73,56 +132,156 @@ class _DobScreenState extends ConsumerState<DobScreen> {
             }
           : null,
       child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _DateBox(
+                  controller: _monthCtl,
+                  focusNode: _monthFocus,
+                  hint: 'Month',
+                  maxLength: 2,
+                  onChanged: (v) => _onDigitChanged(0, v),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _DateBox(
+                  controller: _dayCtl,
+                  focusNode: _dayFocus,
+                  hint: 'Day',
+                  maxLength: 2,
+                  onChanged: (v) => _onDigitChanged(1, v),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: _DateBox(
+                  controller: _yearCtl,
+                  focusNode: _yearFocus,
+                  hint: 'Year',
+                  maxLength: 4,
+                  onChanged: (v) => _onDigitChanged(2, v),
+                ),
+              ),
+            ],
+          ),
+          if (age != null && !_confirmed && _dob != null) ...[
+            const SizedBox(height: 22),
+            TextButton(
+              onPressed: _openAgeSheet,
+              child: const Text('Confirm your age'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DateBox extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String hint;
+  final int maxLength;
+  final ValueChanged<String> onChanged;
+
+  const _DateBox({
+    required this.controller,
+    required this.focusNode,
+    required this.hint,
+    required this.maxLength,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      focusNode: focusNode,
+      keyboardType: TextInputType.number,
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w500,
+        color: AppColors.textPrimary,
+      ),
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(maxLength),
+      ],
+      decoration: InputDecoration(
+        hintText: hint,
+        counterText: '',
+        floatingLabelBehavior: FloatingLabelBehavior.never,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 8, vertical: 18),
+      ),
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _AgeConfirmSheet extends StatelessWidget {
+  final int age;
+  final bool eligible;
+
+  const _AgeConfirmSheet({required this.age, required this.eligible});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: _pickDate,
-            borderRadius: BorderRadius.circular(14),
+          Center(
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+              width: 38,
+              height: 4,
               decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today_outlined,
-                      color: AppColors.textSecondary),
-                  const SizedBox(width: 14),
-                  Text(dobStr,
-                      style: const TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.w500)),
-                  const Spacer(),
-                  const Icon(Icons.chevron_right,
-                      color: AppColors.textHint),
-                ],
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
-          if (age != null) ...[
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Icon(
-                  age >= 18 ? Icons.check_circle : Icons.error_outline,
-                  color: age >= 18 ? AppColors.success : AppColors.error,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  age >= 18
-                      ? "You'll appear as $age"
-                      : "You must be at least 18",
-                  style: TextStyle(
-                    color: age >= 18 ? AppColors.success : AppColors.error,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 22),
+          Text(
+            eligible ? "You're $age" : 'Must be 18+',
+            style: AppTheme.serifHeading(fontSize: 24),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            eligible
+                ? 'Make sure your age is correct before moving on. It keeps Reverse Match real for everyone.'
+                : 'You must be at least 18 to use Reverse Match. Please edit your date of birth.',
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+              height: 1.5,
             ),
-          ],
+          ),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Edit'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed:
+                      eligible ? () => Navigator.pop(context, true) : null,
+                  child: const Text('Confirm'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/clay.dart';
 
-/// Hinge-style selectable row — large, minimal, with a radio/check on the right.
+/// Claymorphic selectable row — puffy clay card that fills with the coral→grape
+/// gradient and squishes in when selected. API preserved (label, sublabel,
+/// isSelected, onTap, multiSelect).
 class OptionTile extends StatelessWidget {
   final String label;
   final String? sublabel;
@@ -20,64 +23,90 @@ class OptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final subColor = Theme.of(context).textTheme.bodyMedium?.color;
+    return ClayButton(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.primary.withValues(alpha: 0.08)
-              : AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.divider,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+      borderRadius: 22,
+      depth: isSelected ? 0.5 : 0.8,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
+      gradient: isSelected
+          ? const LinearGradient(
+              colors: [AppColors.primary, AppColors.grape],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            )
+          : null,
+      color: isSelected ? null : Clay.surface(context),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight:
+                        isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected ? Colors.white : textColor,
+                  ),
+                ),
+                if (sublabel != null) ...[
+                  const SizedBox(height: 4),
                   Text(
-                    label,
+                    sublabel!,
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w500,
-                      color: AppColors.textPrimary,
+                      fontSize: 12,
+                      color: isSelected
+                          ? Colors.white.withValues(alpha: 0.85)
+                          : subColor,
+                      height: 1.4,
                     ),
                   ),
-                  if (sublabel != null) ...[
-                    const SizedBox(height: 2),
-                    Text(sublabel!,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textSecondary)),
-                  ],
                 ],
-              ),
+              ],
             ),
-            if (isSelected)
-              Icon(
-                multiSelect ? Icons.check_box : Icons.check_circle,
-                color: AppColors.primary,
-                size: 24,
-              )
-            else
-              Icon(
-                multiSelect
-                    ? Icons.check_box_outline_blank
-                    : Icons.radio_button_unchecked,
-                color: AppColors.textHint,
-                size: 24,
-              ),
-          ],
+          ),
+          const SizedBox(width: 12),
+          _Indicator(selected: isSelected, multi: multiSelect),
+        ],
+      ),
+    );
+  }
+}
+
+class _Indicator extends StatelessWidget {
+  final bool selected;
+  final bool multi;
+
+  const _Indicator({required this.selected, required this.multi});
+
+  @override
+  Widget build(BuildContext context) {
+    if (selected) {
+      return Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: multi ? BoxShape.rectangle : BoxShape.circle,
+          borderRadius: multi ? BorderRadius.circular(7) : null,
         ),
+        child: const Icon(Icons.check_rounded,
+            size: 17, color: AppColors.primary),
+      );
+    }
+    final borderColor =
+        Theme.of(context).dividerTheme.color ?? AppColors.inputBorder;
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        shape: multi ? BoxShape.rectangle : BoxShape.circle,
+        borderRadius: multi ? BorderRadius.circular(7) : null,
+        border: Border.all(color: borderColor, width: 1.6),
       ),
     );
   }
@@ -102,7 +131,7 @@ class SingleSelectList extends StatelessWidget {
       children: [
         for (final opt in options)
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: 14),
             child: OptionTile(
               label: opt,
               isSelected: selected == opt,
@@ -135,7 +164,7 @@ class MultiSelectList extends StatelessWidget {
       children: [
         for (final opt in options)
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: 14),
             child: OptionTile(
               label: opt,
               isSelected: selected.contains(opt),

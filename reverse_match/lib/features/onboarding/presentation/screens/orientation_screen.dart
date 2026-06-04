@@ -23,15 +23,22 @@ class OrientationScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selected = ref.watch(onboardingProvider).orientation;
+    final data = ref.watch(onboardingProvider);
+    final selected = data.orientation;
 
     void next() =>
         context.push(OnboardingSteps.next('/onboarding/orientation')!);
 
     return OnboardingScaffold(
-      title: 'What is your sexual orientation?',
+      title: "What's your\nsexuality?",
       subtitle: 'Select up to 3. This is optional.',
       progress: OnboardingSteps.progress('/onboarding/orientation'),
+      useCircleNext: true,
+      visibility: OnboardingVisibility(
+        visible: data.orientationVisible,
+        onChanged: (v) =>
+            ref.read(onboardingProvider.notifier).setOrientationVisible(v),
+      ),
       onNext: next,
       onSkip: next,
       child: MultiSelectList(

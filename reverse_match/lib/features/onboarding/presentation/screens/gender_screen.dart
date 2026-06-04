@@ -12,17 +12,25 @@ class GenderScreen extends ConsumerWidget {
   static const _options = {
     'male': 'Man',
     'female': 'Woman',
-    'nonbinary': 'Non-binary',
+    'nonbinary': 'Nonbinary',
   };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selected = ref.watch(onboardingProvider).gender;
+    final data = ref.watch(onboardingProvider);
+    final selected = data.gender;
 
     return OnboardingScaffold(
-      title: 'Which gender best describes you?',
-      subtitle: 'This helps us match you with the right people.',
+      title: 'Which gender best\ndescribes you?',
+      subtitle:
+          "Choose what describes you best. You can add more detail if you'd like.",
       progress: OnboardingSteps.progress('/onboarding/gender'),
+      useCircleNext: true,
+      visibility: OnboardingVisibility(
+        visible: data.genderVisible,
+        onChanged: (v) =>
+            ref.read(onboardingProvider.notifier).setGenderVisible(v),
+      ),
       onNext: selected != null
           ? () => context.push(OnboardingSteps.next('/onboarding/gender')!)
           : null,

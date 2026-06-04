@@ -42,7 +42,9 @@ const callJson = async (method, path, body, timeoutMs = ML_SERVICE_TIMEOUT_MS) =
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       logger.warn(
-        { event: 'ml.http_error', status: res.status, path, body: text.slice(0, 200) },
+        {
+          event: 'ml.http_error', status: res.status, path, body: text.slice(0, 200),
+        },
         'ml-service returned non-2xx',
       );
       return null;
@@ -60,14 +62,25 @@ const callJson = async (method, path, body, timeoutMs = ML_SERVICE_TIMEOUT_MS) =
   }
 };
 
-const recommend = (userId, k = 20) =>
-  callJson('POST', '/v1/recommend', { user_id: String(userId), k });
+/**
+ * Ask the ML service to rank candidates for `userId`.
+ *
+ * When `allowedCandidateIds` is provided, the ML service ranks ONLY within
+ * that set (a hard pre-filtered pool — e.g. the girl's age/height/intent
+ * filters already applied in Mongo). This is how discovery filters constrain
+ * the Ideal Match result while the embedding model still does the ranking.
+ */
+const recommend = (userId, k = 20, allowedCandidateIds = null) => {
+  const body = { user_id: String(userId), k };
+  if (Array.isArray(allowedCandidateIds)) {
+    body.allowed_candidate_ids = allowedCandidateIds.map(String);
+  }
+  return callJson('POST', '/v1/recommend', body);
+};
 
-const dailyMatch = (userId) =>
-  callJson('GET', `/v1/daily-match/${encodeURIComponent(String(userId))}`);
+const dailyMatch = (userId) => callJson('GET', `/v1/daily-match/${encodeURIComponent(String(userId))}`);
 
-const weeklyMatches = (userId) =>
-  callJson('GET', `/v1/weekly-matches/${encodeURIComponent(String(userId))}`);
+const weeklyMatches = (userId) => callJson('GET', `/v1/weekly-matches/${encodeURIComponent(String(userId))}`);
 
 /**
  * Fire-and-forget. Used from swipe.service so the hot path doesn't block.

@@ -92,7 +92,12 @@ class ReverseMatchApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
+      // Force the branded "Velvet Burgundy & Champagne" light theme for everyone.
+      // Previously ThemeMode.system let a phone in dark mode silently switch to
+      // the dark palette while screens still hardcoded light-theme surfaces
+      // (scaffold bg + text), producing a muddy light/dark split. Pinning to
+      // light keeps every screen cohesive.
+      themeMode: ThemeMode.light,
       routerConfig: router,
     );
   }

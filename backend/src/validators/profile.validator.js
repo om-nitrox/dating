@@ -102,6 +102,18 @@ const updateProfileSchema = Joi.object({
     ageMin: Joi.number().integer().min(18).max(100),
     ageMax: Joi.number().integer().min(18).max(100),
     maxDistance: Joi.number().integer().min(1).max(500),
+    // Discovery filters. heightMin/heightMax accept null so the client can
+    // clear a previously-set height filter; intent accepts '' / null to clear
+    // the dating-intentions filter.
+    heightMin: Joi.number().integer().min(120).max(250)
+      .allow(null),
+    heightMax: Joi.number().integer().min(120).max(250)
+      .allow(null),
+    intent: Joi.alternatives().try(
+      Joi.string().valid(...DATING_INTENTIONS_VALUES),
+      Joi.string().valid(''),
+      Joi.valid(null),
+    ),
     genderPreference: Joi.string().valid(...GENDER_PREFERENCE_VALUES),
   }).custom((value, helpers) => {
     if (
@@ -113,7 +125,26 @@ const updateProfileSchema = Joi.object({
         message: 'ageMin must be ≤ ageMax',
       });
     }
+    if (
+      value.heightMin != null
+      && value.heightMax != null
+      && value.heightMin > value.heightMax
+    ) {
+      return helpers.error('any.invalid', {
+        message: 'heightMin must be ≤ heightMax',
+      });
+    }
     return value;
+  }),
+
+  // visibility — per-field "show on profile card?" toggles. Stored as-is;
+  // display masking is a separate follow-up.
+  visibility: Joi.object({
+    gender: Joi.boolean(),
+    orientation: Joi.boolean(),
+    ethnicity: Joi.boolean(),
+    pronouns: Joi.boolean(),
+    datingPreference: Joi.boolean(),
   }),
 
   fcmToken: Joi.string().allow(''),

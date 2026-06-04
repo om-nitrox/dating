@@ -208,16 +208,103 @@ const resolveTargetGenders = (viewer) => {
 };
 
 /**
- * ML-service-backed ideal match. Returns the same shape as the legacy path
- * (topMatch, score, alternates, commonalities) so the caller is unaware
- * which engine produced it. Returns null on any non-fatal failure so the
- * caller can fall back to the legacy cosine encoder.
+ * Build the durable exclusion set (self + interacted + blocked + matched).
  */
-const getIdealMatchFromMl = async (userId, limit, viewer) => {
+const buildExcludeIds = async (userId) => {
+  const [interacted, blocks, existingMatches] = await Promise.all([
+    Like.find({ fromUser: userId }).distinct('toUser'),
+    Block.find({ $or: [{ blocker: userId }, { blocked: userId }] }).lean(),
+    Match.find({ users: userId }).distinct('users'),
+  ]);
+
+  const excludeSet = new Set([userId.toString()]);
+  interacted.forEach((id) => excludeSet.add(id.toString()));
+  blocks.forEach((b) => {
+    excludeSet.add(b.blocker.toString());
+    excludeSet.add(b.blocked.toString());
+  });
+  existingMatches.forEach((id) => excludeSet.add(id.toString()));
+
+  return [...excludeSet].map((id) => new mongoose.Types.ObjectId(id));
+};
+
+/**
+ * Build the Mongo candidate filter from the viewer's saved discovery
+ * preferences. Age always applies (it has schema defaults); height + intent
+ * only constrain when the viewer explicitly set them. This is the SAME filter
+ * the swipe feed uses, so a girl's Ideal Match pool matches what she browses —
+ * apply a filter in discovery and it carries into the ML reveal.
+ */
+const buildCandidateFilter = (viewer, targetGenders, excludeIds) => {
+  const prefs = viewer.preferences || {};
+  const ageMin = prefs.ageMin ?? 18;
+  const ageMax = prefs.ageMax ?? 99;
+
+  const filter = {
+    _id: { $nin: excludeIds },
+    gender: { $in: targetGenders },
+    isActive: true,
+    isProfileComplete: true,
+    age: { $gte: ageMin, $lte: ageMax },
+  };
+
+  if (prefs.heightMin != null || prefs.heightMax != null) {
+    filter.height = {};
+    if (prefs.heightMin != null) filter.height.$gte = prefs.heightMin;
+    if (prefs.heightMax != null) filter.height.$lte = prefs.heightMax;
+  }
+  if (prefs.intent) filter.datingIntentions = prefs.intent;
+
+  return filter;
+};
+
+/**
+ * Run the candidate query (geo-aware). `idsOnly` returns lightweight {_id}
+ * docs for building the ML allow-list; otherwise full projected docs for the
+ * legacy cosine fallback. Hard-capped at 500 for v1 scale.
+ */
+const runCandidateQuery = async (viewer, candidateFilter, idsOnly) => {
+  const maxDistanceKm = viewer.preferences?.maxDistance ?? 200;
+  const coords = viewer.location?.coordinates;
+  const hasLocation = Array.isArray(coords)
+    && coords.length === 2
+    && !(coords[0] === 0 && coords[1] === 0);
+
+  if (hasLocation) {
+    return User.aggregate([
+      {
+        $geoNear: {
+          near: { type: 'Point', coordinates: coords },
+          distanceField: 'distance',
+          maxDistance: maxDistanceKm * 1000,
+          spherical: true,
+          query: candidateFilter,
+        },
+      },
+      { $project: idsOnly ? { _id: 1 } : { ...USER_PROJECTION, distance: 1 } },
+      { $limit: 500 },
+    ]);
+  }
+
+  const q = User.find(candidateFilter).limit(500);
+  return idsOnly
+    ? q.select('_id').lean()
+    : q.select(USER_PROJECTION).lean();
+};
+
+/**
+ * ML-service-backed ideal match. `allowedIds` is the hard pre-filtered
+ * candidate pool (age/height/intent already applied in Mongo); the ML service
+ * ranks ONLY within it, so discovery filters constrain the result while the
+ * embedding model still does the compatibility ranking. Returns the same
+ * shape as the legacy path so the caller is engine-agnostic. Returns null on
+ * any non-fatal failure so the caller can fall back to the cosine encoder.
+ */
+const getIdealMatchFromMl = async (userId, limit, viewer, allowedIds) => {
   if (!mlMatchClient.isEnabled()) return null;
 
   const k = Math.max(limit, 5);
-  const result = await mlMatchClient.recommend(userId, k);
+  const result = await mlMatchClient.recommend(userId, k, allowedIds);
   if (!result || !Array.isArray(result.recommendations) || result.recommendations.length === 0) {
     return null;
   }
@@ -278,75 +365,40 @@ const getIdealMatch = async (userId, limit = 5) => {
   const viewer = await User.findById(userId).lean();
   if (!viewer) throw new AppError('User not found', 404);
 
-  // Try ML first. Any null/throw degrades to the legacy path below.
+  const targetGenders = resolveTargetGenders(viewer);
+  const excludeIds = await buildExcludeIds(userId);
+  // Same filter the swipe feed uses (gender + active + complete + age, plus
+  // height/intent when the viewer set them). This is what carries discovery
+  // filters into the Ideal Match.
+  const candidateFilter = buildCandidateFilter(viewer, targetGenders, excludeIds);
+
+  // Try ML first, constrained to the hard-filtered candidate pool. A genuine
+  // "no candidates" 404 propagates; any other null/throw degrades to the
+  // legacy cosine path below.
   try {
-    const mlResult = await getIdealMatchFromMl(userId, limit, viewer);
-    if (mlResult) {
-      await cacheSet(cacheKey, mlResult, FEATURE_CACHE_TTL);
-      return mlResult;
+    if (mlMatchClient.isEnabled()) {
+      const idDocs = await runCandidateQuery(viewer, candidateFilter, true);
+      const allowedIds = idDocs.map((d) => d._id.toString());
+      if (allowedIds.length === 0) {
+        throw new AppError('No ideal match yet — try widening your filters', 404);
+      }
+      const mlResult = await getIdealMatchFromMl(userId, limit, viewer, allowedIds);
+      if (mlResult) {
+        await cacheSet(cacheKey, mlResult, FEATURE_CACHE_TTL);
+        return mlResult;
+      }
     }
   } catch (err) {
+    if (err instanceof AppError && err.statusCode === 404) throw err;
     logger.warn({ event: 'idealMatch.ml_failed', err: err.message }, 'ML path failed, falling back');
   }
 
-  const targetGenders = resolveTargetGenders(viewer);
-
-  // Build the exclusion set: already matched/liked/skipped, blocked.
-  const [interacted, blocks, existingMatches] = await Promise.all([
-    Like.find({ fromUser: userId }).distinct('toUser'),
-    Block.find({ $or: [{ blocker: userId }, { blocked: userId }] }).lean(),
-    Match.find({ users: userId }).distinct('users'),
-  ]);
-
-  const excludeSet = new Set([userId.toString()]);
-  interacted.forEach((id) => excludeSet.add(id.toString()));
-  blocks.forEach((b) => {
-    excludeSet.add(b.blocker.toString());
-    excludeSet.add(b.blocked.toString());
-  });
-  existingMatches.forEach((id) => excludeSet.add(id.toString()));
-
-  const excludeIds = [...excludeSet].map((id) => new mongoose.Types.ObjectId(id));
-
-  // Candidate filter — gender, active, profile-complete, within max distance.
-  const maxDistanceKm = viewer.preferences?.maxDistance ?? 200;
-  const candidateFilter = {
-    _id: { $nin: excludeIds },
-    gender: { $in: targetGenders },
-    isActive: true,
-    isProfileComplete: true,
-  };
-
-  // Use $geoNear when possible for an efficient pre-filter. Missing or
-  // legacy [0,0] coordinates count as "no location" (see fix 30).
-  let candidates;
-  const viewerCoords = viewer.location?.coordinates;
-  const hasViewerLocation = Array.isArray(viewerCoords)
-    && viewerCoords.length === 2
-    && !(viewerCoords[0] === 0 && viewerCoords[1] === 0);
-  if (hasViewerLocation) {
-    candidates = await User.aggregate([
-      {
-        $geoNear: {
-          near: { type: 'Point', coordinates: viewerCoords },
-          distanceField: 'distance',
-          maxDistance: maxDistanceKm * 1000,
-          spherical: true,
-          query: candidateFilter,
-        },
-      },
-      { $project: { ...USER_PROJECTION, distance: 1 } },
-      { $limit: 500 }, // hard cap — v1 scale guard
-    ]);
-  } else {
-    candidates = await User.find(candidateFilter)
-      .select(USER_PROJECTION)
-      .limit(500)
-      .lean();
-  }
+  // Legacy cosine fallback — over the SAME filtered candidate pool, so the
+  // result respects the discovery filters even when ML is unavailable.
+  const candidates = await runCandidateQuery(viewer, candidateFilter, false);
 
   if (candidates.length === 0) {
-    throw new AppError('No ideal match yet — keep building your profile', 404);
+    throw new AppError('No ideal match yet — try widening your filters', 404);
   }
 
   // Score every candidate.
@@ -384,4 +436,129 @@ const invalidateIdealMatch = async (userId) => {
   await cacheDelPattern(`ideal:${userId}:*`);
 };
 
-module.exports = { getIdealMatch, invalidateIdealMatch };
+// ---------------------------------------------------------------------------
+// Ideal Match feature (girls-only): swipe + profile-completion gates plus a
+// rolling 7-day usage cap. The eligibility is enforced server-side from
+// durable Mongo data (Like docs + User.idealMatchUses) so an ML-service
+// restart can never wrongly lock/unlock a user.
+// ---------------------------------------------------------------------------
+const IDEAL_MIN_SWIPES = 10;
+const IDEAL_WEEKLY_CAP = 2;
+const IDEAL_COMPLETION_THRESHOLD = 0.8;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Fraction (0..1) of key profile fields filled — must match the client. */
+const computeCompletion = (u) => {
+  const checks = [
+    !!u.name,
+    u.age !== undefined && u.age !== null,
+    !!u.gender,
+    (u.photos ? u.photos.length : 0) >= 2,
+    !!u.bio,
+    (u.prompts ? u.prompts.length : 0) > 0,
+    (u.interests ? u.interests.length : 0) > 0,
+    !!u.education,
+    !!(u.hometown || (u.location && u.location.city)),
+    !!u.datingIntentions,
+    u.height !== undefined && u.height !== null,
+  ];
+  return checks.filter(Boolean).length / checks.length;
+};
+
+/**
+ * Eligibility snapshot for the Ideal Match button. Pure read — never consumes
+ * a use. `userDoc` may be passed to avoid a re-fetch (e.g., from reveal).
+ */
+const getIdealMatchStatus = async (userId, userDoc = null) => {
+  const user = userDoc || (await User.findById(userId).lean());
+  if (!user) throw new AppError('User not found', 404);
+
+  const swipeCount = await Like.countDocuments({ fromUser: userId });
+  const completion = computeCompletion(user);
+
+  const now = Date.now();
+  const cutoff = now - WEEK_MS;
+  const recent = (user.idealMatchUses || [])
+    .map((d) => new Date(d).getTime())
+    .filter((t) => t > cutoff);
+  const usesThisWeek = recent.length;
+
+  const swipesOk = swipeCount >= IDEAL_MIN_SWIPES;
+  const profileOk = completion >= IDEAL_COMPLETION_THRESHOLD;
+  const capOk = usesThisWeek < IDEAL_WEEKLY_CAP;
+
+  let nextResetAt = null;
+  if (!capOk && recent.length > 0) {
+    nextResetAt = new Date(Math.min(...recent) + WEEK_MS).toISOString();
+  }
+
+  return {
+    eligible: swipesOk && profileOk && capOk,
+    swipeCount,
+    minSwipes: IDEAL_MIN_SWIPES,
+    completion: Number(completion.toFixed(2)),
+    completionThreshold: IDEAL_COMPLETION_THRESHOLD,
+    usesThisWeek,
+    weeklyCap: IDEAL_WEEKLY_CAP,
+    nextResetAt,
+    swipesOk,
+    profileOk,
+    capOk,
+  };
+};
+
+/**
+ * Run the ML model and reveal the single ideal match, consuming one weekly
+ * use. The use is recorded ONLY after a match is successfully produced, so a
+ * "no candidates" result never wastes one of the two weekly tries.
+ */
+const revealIdealMatch = async (userId) => {
+  const user = await User.findById(userId);
+  if (!user) throw new AppError('User not found', 404);
+
+  const status = await getIdealMatchStatus(userId, user.toObject());
+  if (!status.swipesOk) {
+    throw new AppError(
+      `Swipe a few more profiles to unlock — ${status.minSwipes - status.swipeCount} to go.`,
+      403,
+      'IDEAL_MATCH_LOCKED',
+    );
+  }
+  if (!status.profileOk) {
+    throw new AppError(
+      `Complete your profile to ${Math.round(status.completionThreshold * 100)}% first (you're at ${Math.round(status.completion * 100)}%).`,
+      403,
+      'IDEAL_MATCH_LOCKED',
+    );
+  }
+  if (!status.capOk) {
+    throw new AppError(
+      "You've already found your ideal matches this week. Check back soon.",
+      429,
+      'IDEAL_MATCH_CAP',
+    );
+  }
+
+  // Fresh compute each reveal (bust the 24h cache) so a second reveal in the
+  // same week can surface a different person. Throws 404 if no candidates —
+  // in which case the use below is NOT recorded.
+  await invalidateIdealMatch(userId.toString());
+  const result = await getIdealMatch(userId, 1);
+
+  const cutoff = Date.now() - WEEK_MS;
+  const kept = (user.idealMatchUses || []).filter(
+    (d) => new Date(d).getTime() > cutoff,
+  );
+  kept.push(new Date());
+  user.idealMatchUses = kept;
+  await user.save();
+
+  return { ...result, usesThisWeek: kept.length, weeklyCap: IDEAL_WEEKLY_CAP };
+};
+
+module.exports = {
+  getIdealMatch,
+  invalidateIdealMatch,
+  getIdealMatchStatus,
+  revealIdealMatch,
+};

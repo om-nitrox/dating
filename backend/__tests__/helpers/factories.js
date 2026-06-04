@@ -19,6 +19,10 @@ const makeUser = (overrides = {}) => {
     dob: new Date('1999-01-01'),
     isProfileComplete: true,
     isActive: true,
+    // Test users are pre-approved so the girls-only account gate
+    // (requireApproved) doesn't 403 female fixtures. Tests exercising the
+    // gate itself can override this back to 'pending'/'none'.
+    selfieReviewStatus: 'approved',
     photos: [
       { url: 'https://example.com/a.jpg', publicId: `photo_a_${id}` },
       { url: 'https://example.com/b.jpg', publicId: `photo_b_${id}` },

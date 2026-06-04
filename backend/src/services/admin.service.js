@@ -5,6 +5,7 @@ const Match = require('../models/Match');
 const config = require('../config');
 const { getRedis } = require('../config/redis');
 const { sendPush } = require('./notification.service');
+const requireApproved = require('../middleware/requireApproved.middleware');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
 
@@ -126,14 +127,20 @@ const listPendingSelfies = async (page = 1, limit = 20) => {
   const safeLimit = Math.min(Math.max(limit, 1), 100);
   const skip = (page - 1) * safeLimit;
 
-  const filter = { selfieReviewStatus: 'pending' };
+  // Account verification is a girls-only gate, so the review queue only
+  // surfaces female profiles. (Boys can upload a selfie for the optional
+  // verified badge, but their app access is never gated, so they're not
+  // part of this approval workflow.)
+  const filter = { selfieReviewStatus: 'pending', gender: 'female' };
 
   const [users, total] = await Promise.all([
     User.find(filter)
       .sort({ updatedAt: -1 })
       .skip(skip)
       .limit(safeLimit)
-      .select('_id name email photos selfiePhoto isVerified selfieReviewStatus updatedAt'),
+      .select(
+        '_id name email age gender bio photos selfiePhoto isVerified selfieReviewStatus createdAt updatedAt',
+      ),
     User.countDocuments(filter),
   ]);
 
@@ -160,7 +167,12 @@ const approveSelfie = async (targetUserId, adminId) => {
 
   user.isVerified = true;
   user.selfieReviewStatus = 'approved';
+  user.selfieRejectionReason = null;
   await user.save();
+
+  // Approval is also the account-access gate for girls — drop the cached
+  // approval state so her very next request sees 'approved' immediately.
+  requireApproved.invalidate(String(targetUserId));
 
   logger.info(
     {
@@ -198,7 +210,10 @@ const rejectSelfie = async (targetUserId, adminId, reason) => {
 
   user.selfieReviewStatus = 'rejected';
   user.isVerified = false;
+  user.selfieRejectionReason = reason ? String(reason).slice(0, 300) : null;
   await user.save();
+
+  requireApproved.invalidate(String(targetUserId));
 
   logger.info(
     {
@@ -221,7 +236,11 @@ const rejectSelfie = async (targetUserId, adminId, reason) => {
     );
   } catch (_) { /* noop */ }
 
-  return { userId: String(targetUserId), selfieReviewStatus: 'rejected' };
+  return {
+    userId: String(targetUserId),
+    selfieReviewStatus: 'rejected',
+    selfieRejectionReason: user.selfieRejectionReason,
+  };
 };
 
 module.exports = {

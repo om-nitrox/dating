@@ -178,14 +178,34 @@ const userSchema = new mongoose.Schema(
     },
 
     // -------- preferences --------
+    // ageMin/ageMax/maxDistance have defaults (always applied). heightMin,
+    // heightMax and intent are intentionally un-defaulted: the height/intent
+    // filters only kick in once the user explicitly sets them, so existing
+    // users are never silently over-filtered.
     preferences: {
       ageMin: { type: Number, default: 18, min: 18 },
       ageMax: { type: Number, default: 50, max: 100 },
       maxDistance: { type: Number, default: 50 },
+      heightMin: { type: Number, min: 120, max: 250 },
+      heightMax: { type: Number, min: 120, max: 250 },
+      intent: { type: String, enum: DATING_INTENTIONS_VALUES },
       genderPreference: {
         type: String,
         enum: GENDER_PREFERENCE_VALUES,
       },
+    },
+
+    // -------- visibility --------
+    // Per-field "show on profile card?" toggles collected during onboarding.
+    // Stored only for now — feed/profile responses do NOT yet mask hidden
+    // fields (display enforcement is a separate follow-up). Defaults to
+    // visible so existing users are unaffected.
+    visibility: {
+      gender: { type: Boolean, default: true },
+      orientation: { type: Boolean, default: true },
+      ethnicity: { type: Boolean, default: true },
+      pronouns: { type: Boolean, default: true },
+      datingPreference: { type: Boolean, default: true },
     },
 
     // -------- verification --------
@@ -203,6 +223,22 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: SELFIE_REVIEW_STATUS,
       default: 'none',
+    },
+    // Reason shown to the user when an admin rejects their profile during
+    // verification. Cleared on the next selfie re-upload (back to pending).
+    selfieRejectionReason: {
+      type: String,
+      default: null,
+      maxlength: 300,
+    },
+
+    // -------- ideal match (girls-only feature) --------
+    // Timestamps of each "reveal my ideal match" use. Pruned to a rolling
+    // 7-day window by the service; length within the window enforces the
+    // weekly cap. Durable so an ML-service restart can't reset the cap.
+    idealMatchUses: {
+      type: [Date],
+      default: [],
     },
 
     // -------- status --------

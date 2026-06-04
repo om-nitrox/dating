@@ -141,7 +141,12 @@ class MatchmakerState:
         self.dynamic_store.init_user(viewer_id, emb)
         return self.dynamic_store.get(viewer_id)
 
-    def recommend(self, viewer_id: str, k: int) -> Dict[str, Any]:
+    def recommend(
+        self,
+        viewer_id: str,
+        k: int,
+        allowed_candidate_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         if not self.is_ready():
             return {"viewer_id": viewer_id, "recommendations": [], "reason": "index_empty"}
         with self._lock:
@@ -157,26 +162,44 @@ class MatchmakerState:
 
             query_emb = dyn.get_fused_embedding()
 
-            # FAISS retrieval — overfetch to leave room after filtering.
-            _, cand_ids = self.faiss.search(query_emb, k=max(self.settings.candidates_k, k * 4))
-
-            # Filter: seen, blocked/matched/liked, self, gender preference.
+            # Always-applied filters: seen, blocked/matched/liked, self, gender.
             excluded = repo.get_excluded_ids(viewer_id) | dyn.get_seen_ids()
             target_genders = set(repo.resolve_target_genders(viewer_doc))
 
             kept_ids: List[str] = []
-            for cid in cand_ids:
-                cid_s = str(cid)
-                if cid_s in excluded:
-                    continue
-                idx = snap.id_to_idx.get(cid_s)
-                if idx is None:
-                    continue
-                if snap.user_genders[idx] not in target_genders:
-                    continue
-                kept_ids.append(cid_s)
-                if len(kept_ids) >= k * 4:
-                    break
+            if allowed_candidate_ids is not None:
+                # Hard pre-filtered pool from the backend (age/height/intent
+                # already applied). Score the WHOLE allowed set directly rather
+                # than FAISS top-k, so the best-allowed match is never missed
+                # by overfetch limits when the filter is strict.
+                for cid in allowed_candidate_ids:
+                    cid_s = str(cid)
+                    if cid_s in excluded:
+                        continue
+                    idx = snap.id_to_idx.get(cid_s)
+                    if idx is None:
+                        continue
+                    if snap.user_genders[idx] not in target_genders:
+                        continue
+                    kept_ids.append(cid_s)
+            else:
+                # Unfiltered: FAISS retrieval — overfetch to leave room after
+                # the gender/exclusion filters below.
+                _, cand_ids = self.faiss.search(
+                    query_emb, k=max(self.settings.candidates_k, k * 4)
+                )
+                for cid in cand_ids:
+                    cid_s = str(cid)
+                    if cid_s in excluded:
+                        continue
+                    idx = snap.id_to_idx.get(cid_s)
+                    if idx is None:
+                        continue
+                    if snap.user_genders[idx] not in target_genders:
+                        continue
+                    kept_ids.append(cid_s)
+                    if len(kept_ids) >= k * 4:
+                        break
 
             if not kept_ids:
                 return {"viewer_id": viewer_id, "recommendations": [], "reason": "no_candidates"}

@@ -7,4 +7,16 @@ const getIdealMatch = catchAsync(async (req, res) => {
   res.status(200).json(result);
 });
 
-module.exports = { getIdealMatch };
+// GET /ideal-match/status — eligibility snapshot for the button (no use spent)
+const getStatus = catchAsync(async (req, res) => {
+  const result = await idealMatchService.getIdealMatchStatus(req.user.id);
+  res.status(200).json(result);
+});
+
+// POST /ideal-match/reveal — run ML, return the 1 ideal match, spend a use
+const reveal = catchAsync(async (req, res) => {
+  const result = await idealMatchService.revealIdealMatch(req.user.id);
+  res.status(200).json(result);
+});
+
+module.exports = { getIdealMatch, getStatus, reveal };

@@ -43,6 +43,8 @@ const getFeed = async (userId, cursor, limit = 20, filters = {}) => {
   const hasFilters = filters
     && (filters.minAge !== undefined
       || filters.maxAge !== undefined
+      || filters.minHeight !== undefined
+      || filters.maxHeight !== undefined
       || filters.maxDistanceKm !== undefined
       || filters.intent);
 
@@ -89,13 +91,20 @@ const getFeed = async (userId, cursor, limit = 20, filters = {}) => {
     excludeIds = excludeStringIds.map((id) => new mongoose.Types.ObjectId(id));
   }
 
-  const { ageMin, ageMax, maxDistance } = girl.preferences || {};
+  const {
+    ageMin, ageMax, maxDistance, heightMin, heightMax, intent: prefIntent,
+  } = girl.preferences || {};
 
   // Resolve filters — request query params override the saved preferences,
-  // per BACKEND_API.md §3.
+  // per BACKEND_API.md §3. Height + intent fall back to the saved discovery
+  // filters so the feed honours them even when the client sends no query
+  // params (it persists the filters into preferences instead).
   const effMinAge = filters.minAge ?? ageMin ?? 18;
   const effMaxAge = filters.maxAge ?? ageMax ?? 99;
   const effMaxKm = filters.maxDistanceKm ?? maxDistance ?? 50;
+  const effMinHeight = filters.minHeight ?? heightMin;
+  const effMaxHeight = filters.maxHeight ?? heightMax;
+  const effIntent = filters.intent ?? prefIntent;
 
   // Resolve target gender set from preferences.genderPreference.
   // 'men' → ['male'], 'women' → ['female'], 'everyone' → all.
@@ -117,8 +126,14 @@ const getFeed = async (userId, cursor, limit = 20, filters = {}) => {
     age: { $gte: effMinAge, $lte: effMaxAge },
   };
 
-  if (filters.intent) {
-    baseMatch.datingIntentions = filters.intent;
+  if (effMinHeight != null || effMaxHeight != null) {
+    baseMatch.height = {};
+    if (effMinHeight != null) baseMatch.height.$gte = effMinHeight;
+    if (effMaxHeight != null) baseMatch.height.$lte = effMaxHeight;
+  }
+
+  if (effIntent) {
+    baseMatch.datingIntentions = effIntent;
   }
 
   const pipeline = [];

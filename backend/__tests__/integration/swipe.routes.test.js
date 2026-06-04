@@ -26,6 +26,8 @@ beforeEach(async () => {
     dob: new Date('1999-01-01'),
     isProfileComplete: true,
     isActive: true,
+    // Girls must be admin-approved to use /swipe (requireApproved gate).
+    selfieReviewStatus: 'approved',
     photos: [
       { url: 'https://example.com/a.jpg', publicId: 'fa' },
       { url: 'https://example.com/b.jpg', publicId: 'fb' },

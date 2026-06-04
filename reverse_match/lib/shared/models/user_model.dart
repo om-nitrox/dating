@@ -9,6 +9,8 @@ class UserModel {
   final List<String> orientation;
 
   final String? bio;
+  final String? exercise;
+  final String? zodiac;
   final List<String> interests;
   final List<PhotoModel> photos;
   final List<PromptModel> prompts;
@@ -35,7 +37,16 @@ class UserModel {
   final String boostLevel;
   final bool isProfileComplete;
   final bool isVerified;
+  final String role; // 'user' | 'admin'
+  final String? selfieReviewStatus; // 'none' | 'pending' | 'approved' | 'rejected'
+  final String? selfieRejectionReason;
   final DateTime? createdAt;
+
+  /// Girls must be approved by an admin before they can use the app. Boys are
+  /// never gated. A girl is "approved" only once selfieReviewStatus == approved.
+  bool get isAdmin => role == 'admin';
+  bool get needsVerification =>
+      gender == 'female' && selfieReviewStatus != 'approved';
 
   UserModel({
     required this.id,
@@ -47,6 +58,8 @@ class UserModel {
     this.pronouns = const [],
     this.orientation = const [],
     this.bio,
+    this.exercise,
+    this.zodiac,
     this.interests = const [],
     this.photos = const [],
     this.prompts = const [],
@@ -70,6 +83,9 @@ class UserModel {
     this.boostLevel = 'none',
     this.isProfileComplete = false,
     this.isVerified = false,
+    this.role = 'user',
+    this.selfieReviewStatus,
+    this.selfieRejectionReason,
     this.createdAt,
   });
 
@@ -84,6 +100,8 @@ class UserModel {
       pronouns: _stringList(json['pronouns']),
       orientation: _stringList(json['orientation']),
       bio: json['bio'],
+      exercise: json['exercise'],
+      zodiac: json['zodiac'],
       interests: _stringList(json['interests']),
       photos: (json['photos'] as List?)
               ?.map((p) => PhotoModel.fromJson(p))
@@ -117,6 +135,9 @@ class UserModel {
       boostLevel: json['boostLevel'] ?? 'none',
       isProfileComplete: json['isProfileComplete'] ?? false,
       isVerified: json['isVerified'] ?? false,
+      role: json['role'] ?? 'user',
+      selfieReviewStatus: json['selfieReviewStatus'],
+      selfieRejectionReason: json['selfieRejectionReason'],
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'])
           : null,

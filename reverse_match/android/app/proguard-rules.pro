@@ -23,3 +23,11 @@
 
 # Don't strip Riverpod / state-management metadata
 -keep class dev.rrousselgit.riverpod.** { *; }
+
+# Google Play Core — Flutter's embedding references the deferred-components /
+# split-install APIs, but the Play Core library is not bundled. Without these
+# rules R8 fails the release build with "Missing class
+# com.google.android.play.core.*". We don't use deferred components, so it is
+# safe to tell R8 to ignore them.
+-dontwarn com.google.android.play.core.**
+-keep class com.google.android.play.core.** { *; }

@@ -42,6 +42,19 @@ class SecureStorageService {
   Future<String?> getUserGender() =>
       _storage.read(key: StorageKeys.userGender);
 
+  /// Persisted so the router can route correctly on an OFFLINE cold start,
+  /// before the fresh profile fetch resolves. role: 'user' | 'admin'.
+  Future<void> saveUserRole(String role) =>
+      _storage.write(key: StorageKeys.userRole, value: role);
+
+  Future<String?> getUserRole() => _storage.read(key: StorageKeys.userRole);
+
+  Future<void> saveSelfieReviewStatus(String status) =>
+      _storage.write(key: StorageKeys.selfieReviewStatus, value: status);
+
+  Future<String?> getSelfieReviewStatus() =>
+      _storage.read(key: StorageKeys.selfieReviewStatus);
+
   /// Returns a stable per-install device id, creating one on first call.
   /// Used by the backend to keep one FCM token per device per user.
   Future<String> getOrCreateDeviceId() async {

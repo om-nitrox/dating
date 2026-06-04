@@ -1,8 +1,12 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiEndpoints {
-  static String get baseUrl => dotenv.env['API_BASE_URL'] ?? 'http://localhost:5000/api/v1';
-  static String get socketUrl => dotenv.env['SOCKET_URL'] ?? 'http://localhost:5000';
+  static String get baseUrl =>
+      dotenv.env['API_BASE_URL'] ??
+      'https://reverse-match-api-50042773997.development.catalystappsail.in/api/v1';
+  static String get socketUrl =>
+      dotenv.env['SOCKET_URL'] ??
+      'https://reverse-match-api-50042773997.development.catalystappsail.in';
 
   // Auth
   static const String signup = '/auth/signup';
@@ -49,10 +53,21 @@ class ApiEndpoints {
   // Config
   static const String appConfig = '/config';
 
+  // Ideal Match (girls)
+  static const String idealMatchStatus = '/ideal-match/status';
+  static const String idealMatchReveal = '/ideal-match/reveal';
+
   // Safety
   static const String report = '/report';
   static const String block = '/block';
 
   // Account
   static const String deleteAccount = '/account';
+
+  // Admin — profile verification queue (girls only)
+  static const String adminPendingSelfies = '/admin/selfies/pending';
+  static String adminApproveSelfie(String userId) =>
+      '/admin/selfies/$userId/approve';
+  static String adminRejectSelfie(String userId) =>
+      '/admin/selfies/$userId/reject';
 }

@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const auth = require('../middleware/auth.middleware');
 const requireGender = require('../middleware/gender.middleware');
+const requireApproved = require('../middleware/requireApproved.middleware');
 const { globalLimiter } = require('../middleware/rateLimiter.middleware');
 
 const authRoutes = require('./auth.routes');
@@ -25,12 +26,13 @@ router.use('/auth', authRoutes);
 
 // Protected routes
 router.use('/profile', auth, profileRoutes);
-router.use('/swipe', auth, requireGender('female'), swipeRoutes);
+router.use('/swipe', auth, requireGender('female'), requireApproved, swipeRoutes);
 router.use('/queue', auth, requireGender('male'), queueRoutes);
 router.use('/matches', auth, matchRoutes);
 router.use('/messages', auth, messageRoutes);
 router.use('/boost', auth, boostRoutes);
-router.use('/ideal-match', auth, idealMatchRoutes);
+// Ideal Match is a girls-only feature (boys never browse).
+router.use('/ideal-match', auth, requireGender('female'), requireApproved, idealMatchRoutes);
 router.use('/', auth, safetyRoutes);
 router.use('/', auth, accountRoutes);
 

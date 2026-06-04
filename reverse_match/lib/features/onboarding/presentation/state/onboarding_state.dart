@@ -5,6 +5,11 @@ class OnboardingData {
   final String firstName;
   final DateTime? dob;
   final String? gender; // 'male' | 'female' | 'nonbinary'
+  final bool genderVisible;
+  final bool orientationVisible;
+  final bool ethnicityVisible;
+  final bool pronounsVisible;
+  final bool datingPreferenceVisible;
   final List<File> photos;
   final String? city;
   final double? latitude;
@@ -30,6 +35,12 @@ class OnboardingData {
   final String? datingIntentions;
   final String? relationshipType;
 
+  // Profile content (wired to PUT /profile)
+  final List<String> interests;
+  final String bio;
+  final String? exercise;
+  final String? zodiac;
+
   final String? drinking;
   final String? smoking;
   final String? marijuana;
@@ -42,6 +53,11 @@ class OnboardingData {
     this.firstName = '',
     this.dob,
     this.gender,
+    this.genderVisible = true,
+    this.orientationVisible = true,
+    this.ethnicityVisible = true,
+    this.pronounsVisible = true,
+    this.datingPreferenceVisible = false,
     this.photos = const [],
     this.city,
     this.latitude,
@@ -62,6 +78,10 @@ class OnboardingData {
     this.languages = const [],
     this.datingIntentions,
     this.relationshipType,
+    this.interests = const [],
+    this.bio = '',
+    this.exercise,
+    this.zodiac,
     this.drinking,
     this.smoking,
     this.marijuana,
@@ -85,6 +105,11 @@ class OnboardingData {
     String? firstName,
     DateTime? dob,
     String? gender,
+    bool? genderVisible,
+    bool? orientationVisible,
+    bool? ethnicityVisible,
+    bool? pronounsVisible,
+    bool? datingPreferenceVisible,
     List<File>? photos,
     String? city,
     double? latitude,
@@ -105,6 +130,10 @@ class OnboardingData {
     List<String>? languages,
     String? datingIntentions,
     String? relationshipType,
+    List<String>? interests,
+    String? bio,
+    String? exercise,
+    String? zodiac,
     String? drinking,
     String? smoking,
     String? marijuana,
@@ -116,6 +145,12 @@ class OnboardingData {
       firstName: firstName ?? this.firstName,
       dob: dob ?? this.dob,
       gender: gender ?? this.gender,
+      genderVisible: genderVisible ?? this.genderVisible,
+      orientationVisible: orientationVisible ?? this.orientationVisible,
+      ethnicityVisible: ethnicityVisible ?? this.ethnicityVisible,
+      pronounsVisible: pronounsVisible ?? this.pronounsVisible,
+      datingPreferenceVisible:
+          datingPreferenceVisible ?? this.datingPreferenceVisible,
       photos: photos ?? this.photos,
       city: city ?? this.city,
       latitude: latitude ?? this.latitude,
@@ -136,6 +171,10 @@ class OnboardingData {
       languages: languages ?? this.languages,
       datingIntentions: datingIntentions ?? this.datingIntentions,
       relationshipType: relationshipType ?? this.relationshipType,
+      interests: interests ?? this.interests,
+      bio: bio ?? this.bio,
+      exercise: exercise ?? this.exercise,
+      zodiac: zodiac ?? this.zodiac,
       drinking: drinking ?? this.drinking,
       smoking: smoking ?? this.smoking,
       marijuana: marijuana ?? this.marijuana,

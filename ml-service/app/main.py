@@ -75,7 +75,11 @@ def health() -> HealthResponse:
     dependencies=[Depends(require_api_key)],
 )
 def recommend(req: RecommendRequest) -> RecommendResponse:
-    result = state.recommend(req.user_id, k=req.k)
+    result = state.recommend(
+        req.user_id,
+        k=req.k,
+        allowed_candidate_ids=req.allowed_candidate_ids,
+    )
     return RecommendResponse(**result)
 
 

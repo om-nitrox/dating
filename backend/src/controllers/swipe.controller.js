@@ -10,6 +10,12 @@ const getFeed = catchAsync(async (req, res) => {
     {
       minAge: req.cleanQuery.minAge ? parseInt(req.cleanQuery.minAge, 10) : undefined,
       maxAge: req.cleanQuery.maxAge ? parseInt(req.cleanQuery.maxAge, 10) : undefined,
+      minHeight: req.cleanQuery.minHeight
+        ? parseInt(req.cleanQuery.minHeight, 10)
+        : undefined,
+      maxHeight: req.cleanQuery.maxHeight
+        ? parseInt(req.cleanQuery.maxHeight, 10)
+        : undefined,
       maxDistanceKm: req.cleanQuery.maxDistanceKm
         ? parseInt(req.cleanQuery.maxDistanceKm, 10)
         : undefined,

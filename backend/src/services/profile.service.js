@@ -100,16 +100,28 @@ const updateProfile = async (userId, data) => {
       state: data.location.state ?? user.location?.state,
     };
   }
+  let preferencesChanged = false;
   if (data.preferences) {
+    const incoming = { ...data.preferences };
+    // '' is the client's "clear the intent filter" sentinel; the Mongoose enum
+    // would reject it, so normalise to undefined (unset the filter).
+    if (incoming.intent === '') incoming.intent = undefined;
     user.preferences = {
       ...user.preferences.toObject(),
-      ...data.preferences,
+      ...incoming,
     };
+    preferencesChanged = true;
   }
   if (data.vices) {
     user.vices = {
       ...(user.vices ? user.vices.toObject() : {}),
       ...data.vices,
+    };
+  }
+  if (data.visibility) {
+    user.visibility = {
+      ...(user.visibility ? user.visibility.toObject() : {}),
+      ...data.visibility,
     };
   }
 
@@ -120,13 +132,16 @@ const updateProfile = async (userId, data) => {
   // profile edit so the next request recomputes against fresh data.
   await invalidateIdealMatch(userId);
 
-  // If the user moved (or set their first location), bump the feed/exclude
-  // cache versions so the next /swipe/feed read recomputes from the new geo.
+  // Bump the feed cache version whenever geo OR discovery filters
+  // (preferences: age/height/intent/distance) change, so the next
+  // /swipe/feed read recomputes against the new criteria instead of serving
+  // a stale cached page. The exclude set only depends on location, so it's
+  // only bumped on a move.
+  if (locationChanged || preferencesChanged) {
+    await bumpCacheVersion('feed', userId);
+  }
   if (locationChanged) {
-    await Promise.all([
-      bumpCacheVersion('feed', userId),
-      bumpCacheVersion('exclude', userId),
-    ]);
+    await bumpCacheVersion('exclude', userId);
   }
 
   return stripPrivate(user);
@@ -263,6 +278,9 @@ const uploadSelfie = async (userId, file) => {
   // selfieReviewStatus = 'approved' AND isVerified = true.
   user.isVerified = false;
   user.selfieReviewStatus = 'pending';
+  // Re-uploading clears any prior rejection reason — the profile is back in
+  // the queue for a fresh review.
+  user.selfieRejectionReason = null;
   await user.save();
 
   if (previousPublicId) {

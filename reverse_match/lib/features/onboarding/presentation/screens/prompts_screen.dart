@@ -119,7 +119,7 @@ class _PromptSlot extends StatelessWidget {
     final result = await showModalBottomSheet<PromptAnswer>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),

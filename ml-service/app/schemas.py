@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 class RecommendRequest(BaseModel):
     user_id: str
     k: int = Field(default=20, ge=1, le=100)
+    # Optional hard pre-filtered candidate pool. When provided, the ranker
+    # scores ONLY these candidate ids (the backend has already applied the
+    # viewer's age/height/intent filters in Mongo). This is how discovery
+    # filters constrain the Ideal Match while the embedding model still ranks.
+    allowed_candidate_ids: Optional[List[str]] = None
 
 
 class Recommendation(BaseModel):

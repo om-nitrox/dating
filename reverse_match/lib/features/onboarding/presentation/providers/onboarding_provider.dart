@@ -13,11 +13,20 @@ class OnboardingController extends StateNotifier<OnboardingData> {
   void setFirstName(String v) => state = state.copyWith(firstName: v);
   void setDob(DateTime v) => state = state.copyWith(dob: v);
   void setGender(String v) => state = state.copyWith(gender: v);
+  void setGenderVisible(bool v) => state = state.copyWith(genderVisible: v);
 
   void setPronouns(List<String> v) => state = state.copyWith(pronouns: v);
+  void setPronounsVisible(bool v) =>
+      state = state.copyWith(pronounsVisible: v);
   void setOrientation(List<String> v) => state = state.copyWith(orientation: v);
+  void setOrientationVisible(bool v) =>
+      state = state.copyWith(orientationVisible: v);
   void setDatingPreference(String v) =>
       state = state.copyWith(datingPreference: v);
+  void setDatingPreferenceVisible(bool v) =>
+      state = state.copyWith(datingPreferenceVisible: v);
+  void setEthnicityVisible(bool v) =>
+      state = state.copyWith(ethnicityVisible: v);
 
   void setLocation({double? lat, double? lng, String? city}) {
     state = state.copyWith(latitude: lat, longitude: lng, city: city);
@@ -40,6 +49,11 @@ class OnboardingController extends StateNotifier<OnboardingData> {
   void setRelationshipType(String v) =>
       state = state.copyWith(relationshipType: v);
 
+  void setInterests(List<String> v) => state = state.copyWith(interests: v);
+  void setBio(String v) => state = state.copyWith(bio: v);
+  void setExercise(String v) => state = state.copyWith(exercise: v);
+  void setZodiac(String v) => state = state.copyWith(zodiac: v);
+
   void setDrinking(String v) => state = state.copyWith(drinking: v);
   void setSmoking(String v) => state = state.copyWith(smoking: v);
   void setMarijuana(String v) => state = state.copyWith(marijuana: v);
@@ -49,6 +63,16 @@ class OnboardingController extends StateNotifier<OnboardingData> {
       state = state.copyWith(photos: [...state.photos, f]);
   void removePhoto(int i) {
     final list = [...state.photos]..removeAt(i);
+    state = state.copyWith(photos: list);
+  }
+
+  void reorderPhotos(int oldIndex, int newIndex) {
+    final list = [...state.photos];
+    // ReorderableListView semantics: when moving down, newIndex is the
+    // position AFTER removal of the dragged item, so we decrement.
+    final adjusted = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    final item = list.removeAt(oldIndex);
+    list.insert(adjusted, item);
     state = state.copyWith(photos: list);
   }
 
@@ -141,11 +165,27 @@ class OnboardingController extends StateNotifier<OnboardingData> {
           _relationship[s.relationshipType] ?? s.relationshipType;
     }
 
+    if (s.interests.isNotEmpty) data['interests'] = s.interests;
+    if (s.bio.trim().isNotEmpty) data['bio'] = s.bio.trim();
+    if (s.exercise != null) data['exercise'] = s.exercise;
+    if (s.zodiac != null) data['zodiac'] = s.zodiac;
+
+    // The vice screens store the server KEY directly (e.g. 'yes'); older state
+    // may hold a UI label. Map label→key when possible, else pass the value
+    // through — never emit null (backend rejects non-string vice values).
     final vices = <String, dynamic>{};
-    if (s.drinking != null) vices['drinking'] = _frequency[s.drinking!];
-    if (s.smoking != null) vices['smoking'] = _frequency[s.smoking!];
-    if (s.marijuana != null) vices['marijuana'] = _frequency[s.marijuana!];
-    if (s.drugs != null) vices['drugs'] = _frequency[s.drugs!];
+    if (s.drinking != null) {
+      vices['drinking'] = _frequency[s.drinking!] ?? s.drinking;
+    }
+    if (s.smoking != null) {
+      vices['smoking'] = _frequency[s.smoking!] ?? s.smoking;
+    }
+    if (s.marijuana != null) {
+      vices['marijuana'] = _frequency[s.marijuana!] ?? s.marijuana;
+    }
+    if (s.drugs != null) {
+      vices['drugs'] = _frequency[s.drugs!] ?? s.drugs;
+    }
     if (vices.isNotEmpty) data['vices'] = vices;
 
     if (s.prompts.isNotEmpty) {
@@ -167,6 +207,16 @@ class OnboardingController extends StateNotifier<OnboardingData> {
         if (s.city != null && s.city!.isNotEmpty) 'city': s.city,
       };
     }
+
+    // Per-field "show on profile card?" toggles. Always sent so the backend
+    // persists the user's choice (defaults to visible).
+    data['visibility'] = {
+      'gender': s.genderVisible,
+      'orientation': s.orientationVisible,
+      'ethnicity': s.ethnicityVisible,
+      'pronouns': s.pronounsVisible,
+      'datingPreference': s.datingPreferenceVisible,
+    };
 
     return data;
   }

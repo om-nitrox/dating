@@ -9,6 +9,8 @@ class OnboardingSteps {
     '/onboarding/orientation',    // 5
     '/onboarding/dating-pref',    // 6
     '/onboarding/location',       // 7
+    '/onboarding/notifications',  // 7a
+    '/onboarding/preview-card',   // 7b
     '/onboarding/height',         // 8
     '/onboarding/ethnicity',      // 9
     '/onboarding/children',       // 10
@@ -20,17 +22,21 @@ class OnboardingSteps {
     '/onboarding/religion',       // 16
     '/onboarding/politics',       // 17
     '/onboarding/languages',      // 18
-    '/onboarding/intentions',     // 19
-    '/onboarding/relationship',   // 20
-    '/onboarding/drinking',       // 21
-    '/onboarding/smoking',        // 22
-    '/onboarding/marijuana',      // 23
-    '/onboarding/drugs',          // 24
-    '/onboarding/photos',         // 25
-    '/onboarding/prompts',        // 26
-    '/onboarding/selfie',         // 27
-    '/onboarding/preview',        // 28
-    '/onboarding/tutorial',       // 29
+    '/onboarding/interests',      // 19
+    '/onboarding/intentions',     // 20
+    '/onboarding/relationship',   // 21
+    '/onboarding/drinking',       // 22
+    '/onboarding/smoking',        // 23
+    '/onboarding/marijuana',      // 24
+    '/onboarding/drugs',          // 25
+    '/onboarding/exercise',       // 26
+    '/onboarding/zodiac',         // 27
+    '/onboarding/photos',         // 28
+    '/onboarding/prompts',        // 29
+    '/onboarding/bio',            // 30
+    '/onboarding/selfie',         // 31
+    '/onboarding/preview',        // 32
+    '/onboarding/tutorial',       // 33
   ];
 
   static int total = routes.length;

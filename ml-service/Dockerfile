@@ -17,8 +17,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
+# Install CPU-only torch first. The default torch wheel pulls multi-GB CUDA
+# (nvidia-*-cu12) libs we never use on a CPU service — that filled the build
+# disk. `2.4.1+cpu` satisfies the `torch==2.4.1` pin so `-r requirements.txt`
+# below won't re-fetch the CUDA build.
 RUN pip install --upgrade pip \
-    && pip install -r requirements.txt
+    && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.4.1 \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY app /app/app
 COPY scripts /app/scripts
