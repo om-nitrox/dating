@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
@@ -38,14 +39,23 @@ def require_api_key(x_api_key: str = Header(default="")) -> None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid api key")
 
 
+def _boot_rebuild() -> None:
+    try:
+        result = state.rebuild_from_mongo()
+        logger.info("Boot index built: %s", result)
+    except Exception as e:
+        logger.exception("Boot index build failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.auto_rebuild_on_boot:
-        try:
-            result = state.rebuild_from_mongo()
-            logger.info("Boot index built: %s", result)
-        except Exception as e:
-            logger.exception("Boot index build failed: %s", e)
+        # Build the index in a daemon thread so uvicorn binds the port and
+        # reports startup-complete immediately. AppSail kills instances that
+        # don't start listening within its startup window, and a synchronous
+        # rebuild (model load + embedding) overruns it. The snapshot swaps in
+        # atomically once built; /health reports ready=false until then.
+        threading.Thread(target=_boot_rebuild, name="boot-rebuild", daemon=True).start()
     yield
 
 

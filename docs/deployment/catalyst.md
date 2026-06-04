@@ -88,7 +88,11 @@ This writes `catalyst.json`. Bump the **ml** service memory well above the
 512 MB default (≥1–2 GB) in the console Configuration tab or `catalyst.json`.
 
 > Alternative (no init): standalone deploy per service, e.g.
-> `catalyst deploy appsail --name reverse-match-api --source docker://localhost/reverse-match-api:latest --port 9000`
+> `catalyst deploy appsail --name reverse-match-api --source docker://reverse-match-api:latest --port 9000`
+> The string after `docker://` is used verbatim as the local image reference — do
+> **not** prefix it with `localhost/` (the CLI then looks up `localhost/<name>` and
+> fails with `no such image`). Verified working for ml on 2026-06-04; deployed URL
+> pattern: `https://<name>-50042773997.development.catalystappsail.in`.
 
 ---
 
@@ -207,7 +211,19 @@ curl -X POST https://<api>/internal/cron/clear-expired-boosts -H "X-Cron-Secret:
 - **Worker**: kept warm by a Cron ping — pragmatic, not ideal. Jobs may wait up
   to ~1 min between warm windows; `boost.activate` retries cover it.
 - **ML**: heaviest service; FAISS index is in-memory and rebuilds on cold start.
-  Bump memory and bake the model in; add persistence later.
+  Bump memory; add index persistence later.
+  - **Startup probe (resolved 2026-06-04):** AppSail kills any instance that
+    doesn't bind its port within the startup window. A *synchronous* boot
+    index-build overran it → the URL returned `{"status":"failure", ... "Execution
+    failed. Please check the startup command or port."}`. Fixes applied:
+    (1) the embedding model is **baked into the image** (`ml-service/Dockerfile`
+    pre-downloads `all-MiniLM-L6-v2`) so cold starts don't fetch ~90 MB; and
+    (2) the boot rebuild runs in a **daemon thread** (`ml-service/app/main.py`
+    lifespan) so uvicorn binds the port in ~3 s and the index swaps in a few
+    seconds later. `/health` reports `ready:false` until the build completes.
+  - `MONGO_URI` **must** include an explicit `/test` db path (that's where the
+    data lives — Mongoose default), or the adapter crashes with `InvalidName`.
+    See the `mongo-db-name` note.
 - Existing AWS Terraform/CD under `infra/` is left untouched (not the chosen
   target).
 - Pre-existing repo lint errors in `backend/src/services/mlMatch.client.js`

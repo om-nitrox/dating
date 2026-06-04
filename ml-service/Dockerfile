@@ -25,6 +25,12 @@ RUN pip install --upgrade pip \
     && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.4.1 \
     && pip install --no-cache-dir -r requirements.txt
 
+# Bake the embedding model into the image so cold-start instances don't download
+# ~90MB from HuggingFace on every boot. AppSail recycles instances ~every 5 min,
+# and a runtime download blocks the boot index-build long enough to overrun the
+# platform's startup probe. Cached under SENTENCE_TRANSFORMERS_HOME (/app/data/hf-cache).
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
 COPY app /app/app
 COPY scripts /app/scripts
 
