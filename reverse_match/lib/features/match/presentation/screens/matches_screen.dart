@@ -235,6 +235,7 @@ class MatchesScreen extends ConsumerWidget {
                         itemBuilder: (context, index) {
                           final match = newMatches[index];
                           final other = match.otherUser(myId);
+                          if (other == null) return const SizedBox.shrink();
                           return _NewMatchTile(
                             name: other.name ?? 'Unknown',
                             photoUrl: other.firstPhoto,
@@ -263,6 +264,7 @@ class MatchesScreen extends ConsumerWidget {
                   itemBuilder: (context, index) {
                     final match = conversations[index];
                     final other = match.otherUser(myId);
+                    if (other == null) return const SizedBox.shrink();
                     return Dismissible(
                       key: ValueKey(match.id),
                       direction: DismissDirection.endToStart,

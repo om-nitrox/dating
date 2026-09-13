@@ -82,7 +82,7 @@ const purchaseBoost = async (userId, tier) => {
         price_data: {
           currency: plan.currency.toLowerCase(),
           product_data: {
-            name: `Reverse Match Boost — ${plan.name}`,
+            name: `HOOK Boost — ${plan.name}`,
           },
           unit_amount: plan.priceCents,
         },

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/extensions/context_extensions.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/clay.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../domain/auth_state.dart';
@@ -174,47 +175,43 @@ class _OptOutBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    return ClayButton(
+      onTap: () => onChanged(!checked),
+      borderRadius: Clay.radiusSm,
+      depth: 0.8,
       color: AppColors.surfaceVariant,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => onChanged(!checked),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 22,
-                height: 22,
-                margin: const EdgeInsets.only(top: 2),
-                decoration: BoxDecoration(
-                  color: checked ? AppColors.pill : Colors.transparent,
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(
-                    color: checked ? AppColors.pill : AppColors.inputBorder,
-                    width: 1.4,
-                  ),
-                ),
-                child: checked
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
-                    : null,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            margin: const EdgeInsets.only(top: 2),
+            decoration: BoxDecoration(
+              color: checked ? AppColors.pill : Colors.transparent,
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: checked ? AppColors.pill : AppColors.inputBorder,
+                width: 1.4,
               ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  "If you don't wish to receive marketing communications about our products and services, check this box.",
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
+            ),
+            child: checked
+                ? const Icon(Icons.check, size: 14, color: Colors.white)
+                : null,
           ),
-        ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              "If you don't wish to receive marketing communications about our products and services, check this box.",
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

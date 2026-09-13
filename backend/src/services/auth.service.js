@@ -24,7 +24,7 @@ const validateAge = (dateOfBirth) => {
     throw new AppError('Invalid date of birth', 400);
   }
   if (Date.now() - dob.getTime() < MIN_AGE_MS) {
-    throw new AppError('You must be 18 or older to use Reverse Match', 400);
+    throw new AppError('You must be 18 or older to use HOOK', 400);
   }
   return dob;
 };

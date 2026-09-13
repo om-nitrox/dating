@@ -6,6 +6,7 @@ import '../../../../core/extensions/context_extensions.dart';
 import '../../../../core/network/api_result.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/clay.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../../../shared/widgets/app_cached_image.dart';
 import '../../../home/data/swipe_repository.dart';
@@ -320,23 +321,13 @@ class _GradientButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 56,
-        width: double.infinity,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [AppColors.grape, AppColors.hot]),
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.grape.withValues(alpha: 0.35),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
+    return SizedBox(
+      width: double.infinity,
+      child: ClayButton(
+        onTap: onTap,
+        borderRadius: Clay.radius,
+        padding: const EdgeInsets.symmetric(vertical: 17),
+        gradient: const LinearGradient(colors: [AppColors.grape, AppColors.hot]),
         child: loading
             ? const SizedBox(
                 width: 22,
@@ -447,14 +438,11 @@ class _ResultView extends StatelessWidget {
 
           if (result.commonalities.isNotEmpty) ...[
             const SizedBox(height: 18),
-            Container(
+            ClayContainer(
               width: double.infinity,
+              borderRadius: Clay.radiusSm,
+              depth: 0.7,
               padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.divider),
-              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

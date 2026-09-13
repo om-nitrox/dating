@@ -403,7 +403,7 @@ class HingeChoiceTile extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: ClayButton(
         onTap: onTap,
-        borderRadius: 20,
+        borderRadius: Clay.radiusSm,
         depth: selected ? 0.45 : 0.7,
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
         color: selected ? AppColors.surfaceVariant : Clay.surface(context),

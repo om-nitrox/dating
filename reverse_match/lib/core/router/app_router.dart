@@ -416,6 +416,11 @@ class _MainShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final connectivity = ref.watch(connectivityProvider);
+    final authState = ref.watch(authProvider);
+    // Ideal Match is a girls-only ML feature, so its nav button only shows for
+    // female users.
+    final showIdeal = authState is AuthAuthenticated &&
+        authState.user.gender == 'female';
 
     final index = _calculateIndex(context);
     return Scaffold(
@@ -440,6 +445,7 @@ class _MainShell extends ConsumerWidget {
       ),
       bottomNavigationBar: _ClayNavBar(
         index: index,
+        showIdeal: showIdeal,
         onTap: (i) {
           switch (i) {
             case 0:
@@ -450,6 +456,7 @@ class _MainShell extends ConsumerWidget {
               context.go('/settings');
           }
         },
+        onIdeal: () => context.push('/ideal-match'),
       ),
     );
   }
@@ -467,7 +474,16 @@ class _ClayNavBar extends StatelessWidget {
   final int index;
   final ValueChanged<int> onTap;
 
-  const _ClayNavBar({required this.index, required this.onTap});
+  /// Girls-only: show the Ideal Match (✨) launcher as an extra nav button.
+  final bool showIdeal;
+  final VoidCallback onIdeal;
+
+  const _ClayNavBar({
+    required this.index,
+    required this.onTap,
+    required this.showIdeal,
+    required this.onIdeal,
+  });
 
   static const _items = [
     (Icons.local_fire_department_rounded, 'Home'),
@@ -482,58 +498,95 @@ class _ClayNavBar extends StatelessWidget {
       child: ClayContainer(
         borderRadius: 28,
         depth: 0.9,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(_items.length, (i) {
-            final selected = i == index;
-            final (icon, label) = _items[i];
-            return Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onTap(i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOut,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(
-                    gradient: selected
-                        ? const LinearGradient(
-                            colors: [AppColors.grape, AppColors.primary],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        icon,
-                        size: 22,
-                        color: selected
-                            ? Colors.white
-                            : Theme.of(context).textTheme.bodyMedium?.color,
-                      ),
-                      if (selected) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          label,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ],
+          children: [
+            for (var i = 0; i < _items.length; i++)
+              Expanded(child: _tab(context, i)),
+            if (showIdeal) Expanded(child: _idealButton(context)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tab(BuildContext context, int i) {
+    final selected = i == index;
+    final (icon, label) = _items[i];
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onTap(i),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        decoration: BoxDecoration(
+          gradient: selected
+              ? const LinearGradient(
+                  colors: [AppColors.grape, AppColors.primary],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        // Scale the icon+label down a hair if the cell is tight (4 items on a
+        // narrow phone) so it never overflows.
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 22,
+                color: selected
+                    ? Colors.white
+                    : Theme.of(context).textTheme.bodyMedium?.color,
+              ),
+              if (selected) ...[
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
                   ),
                 ),
-              ),
-            );
-          }),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The Ideal Match launcher — always wears the signature sparkle gradient so
+  /// it reads as the special AI feature among the regular tabs.
+  Widget _idealButton(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onIdeal,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [AppColors.grape, AppColors.hot],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.auto_awesome_rounded, size: 22, color: Colors.white),
+          ],
         ),
       ),
     );

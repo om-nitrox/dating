@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/clay.dart';
 import '../onboarding_steps.dart';
 import '../providers/onboarding_provider.dart';
 import '../widgets/onboarding_scaffold.dart';
@@ -113,14 +114,10 @@ class PreviewScreen extends ConsumerWidget {
   }
 
   Widget _promptCard(String q, String a) {
-    return Container(
+    return ClayContainer(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.divider),
-      ),
+      borderRadius: Clay.radiusSm,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

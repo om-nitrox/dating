@@ -94,12 +94,12 @@ flutter_launcher_icons:
 # Native splash screen. Run `dart run flutter_native_splash:create` after
 # dropping `assets/images/splash_logo.png` (recommended 300x300).
 flutter_native_splash:
-  color: "#E91E8C"
-  image: assets/images/splash_logo.png
+  color: "#FBF4EE"
+  image: assets/images/hook_logo.png
   android_12:
-    color: "#E91E8C"
-    icon_background_color: "#E91E8C"
-    image: assets/images/splash_logo.png
+    color: "#FBF4EE"
+    icon_background_color: "#FBF4EE"
+    image: assets/images/hook_logo.png
 
 flutter:
   uses-material-design: true

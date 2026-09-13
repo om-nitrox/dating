@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/clay.dart';
 import '../onboarding_steps.dart';
 
 /// Hinge-style "Don't miss when someone wants to connect" notification
@@ -120,38 +121,36 @@ class _ToggleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    return ClayContainer(
       color: AppColors.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        child: Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Turn on notifications',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
+      borderRadius: Clay.radiusSm,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Turn on notifications',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
               ),
             ),
-            requesting
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2.2),
-                  )
-                : Switch(
-                    value: granted,
-                    onChanged: onChanged,
-                    activeThumbColor: Colors.white,
-                    activeTrackColor: AppColors.pill,
-                    inactiveTrackColor: AppColors.divider,
-                  ),
-          ],
-        ),
+          ),
+          requesting
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.2),
+                )
+              : Switch(
+                  value: granted,
+                  onChanged: onChanged,
+                  activeThumbColor: Colors.white,
+                  activeTrackColor: AppColors.pill,
+                  inactiveTrackColor: AppColors.divider,
+                ),
+        ],
       ),
     );
   }

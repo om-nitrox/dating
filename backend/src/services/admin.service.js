@@ -84,7 +84,7 @@ const banUserById = async (targetUserId, adminId) => {
     );
   } catch (_) {}
 
-  sendPush(targetUserId, 'Account Suspended', 'Your Reverse Match account has been suspended for violating community guidelines.', {
+  sendPush(targetUserId, 'Account Suspended', 'Your HOOK account has been suspended for violating community guidelines.', {
     type: 'account_banned',
   });
 

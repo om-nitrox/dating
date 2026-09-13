@@ -20,7 +20,7 @@ class InterestChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClayButton(
       onTap: onTap,
-      borderRadius: 20,
+      borderRadius: Clay.radiusSm,
       depth: isSelected ? 0.5 : 0.7,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
       gradient: isSelected

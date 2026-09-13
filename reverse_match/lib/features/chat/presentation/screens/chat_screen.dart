@@ -36,6 +36,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _myId;
   Timer? _typingTimer;
   bool _hasText = false;
+  int _tempCounter = 0;
 
   @override
   void initState() {
@@ -133,15 +134,47 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     socket.joinRoom(widget.matchId);
 
     socket.on('new-message', (data) {
-      final message = MessageModel.fromJson(data);
-      if (message.matchId == widget.matchId) {
-        setState(() => _messages.add(message));
-        _scrollToBottom();
+      if (!mounted) return;
+      if (data is! Map) return;
+      // The server emits an envelope: { matchId, message }. The actual message
+      // fields live under `message`, so parse that — parsing the envelope
+      // directly yielded blank text/sender. Fall back to the raw object in
+      // case an older flat payload shape is ever received.
+      final rawMessage = data['message'] ?? data;
+      if (rawMessage is! Map) return;
+      final message =
+          MessageModel.fromJson(Map<String, dynamic>.from(rawMessage));
+      final envMatchId = (data['matchId'] ?? message.matchId)?.toString();
+      if (envMatchId != widget.matchId) return;
+      // Dedup by id: the sender's socket is in both the match room and its
+      // personal room, so the same confirmed message can arrive twice.
+      if (message.id.isNotEmpty &&
+          _messages.any((m) => m.id == message.id)) {
+        return;
+      }
+      setState(() {
+        // Reconcile our own optimistic ('local-') bubble with the server's
+        // confirmed copy instead of adding a duplicate.
+        if (message.sender == _myId) {
+          final idx = _messages.indexWhere(
+            (m) => m.id.startsWith('local-') && m.text == message.text,
+          );
+          if (idx != -1) {
+            _messages[idx] = message;
+            return;
+          }
+        }
+        _messages.add(message);
+      });
+      _scrollToBottom();
+      // Only the recipient marks the other side's messages as seen.
+      if (message.sender != _myId) {
         socket.markSeen(widget.matchId);
       }
     });
 
     socket.on('user-typing', (data) {
+      if (!mounted) return;
       if (data['matchId'] == widget.matchId) {
         setState(() => _isOtherTyping = true);
         _typingTimer?.cancel();
@@ -152,12 +185,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
 
     socket.on('user-stopped-typing', (data) {
+      if (!mounted) return;
       if (data['matchId'] == widget.matchId) {
         setState(() => _isOtherTyping = false);
       }
     });
 
     socket.on('messages-seen', (data) {
+      if (!mounted) return;
       if (data['matchId'] == widget.matchId) {
         setState(() {
           for (var i = _messages.length - 1; i >= 0; i--) {
@@ -199,6 +234,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final socket = ref.read(socketServiceProvider);
     socket.sendMessage(widget.matchId, text);
     socket.stopTyping(widget.matchId);
+
+    // Optimistic echo — show the message instantly. The server's `new-message`
+    // broadcast replaces this temp 'local-' entry with the confirmed one
+    // (matched by sender + text in the socket handler above).
+    final myId = _myId;
+    if (myId != null) {
+      final optimistic = MessageModel(
+        id: 'local-${_tempCounter++}',
+        matchId: widget.matchId,
+        sender: myId,
+        text: text,
+        seen: false,
+        createdAt: DateTime.now(),
+      );
+      setState(() => _messages.add(optimistic));
+      _scrollToBottom();
+    }
+
     _textController.clear();
   }
 
@@ -549,7 +602,9 @@ class _MessageBubble extends StatelessWidget {
                     if (isMe) ...[
                       const SizedBox(width: 4),
                       Icon(
-                        message.seen ? Icons.done_all : Icons.done,
+                        message.id.startsWith('local-')
+                            ? Icons.schedule // pending (not yet confirmed)
+                            : (message.seen ? Icons.done_all : Icons.done),
                         size: 14,
                         color: message.seen
                             ? AppColors.secondary

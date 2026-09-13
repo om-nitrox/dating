@@ -307,12 +307,15 @@ class _PillRow extends StatelessWidget {
           borderRadius: 22,
           padding: const EdgeInsets.symmetric(vertical: 18),
           gradient: const LinearGradient(
-            colors: [AppColors.primary, AppColors.grape],
+            colors: AppColors.buttonGradient,
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           child: Text(
             label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 16,

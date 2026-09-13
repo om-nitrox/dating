@@ -228,7 +228,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         ),
       ),
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
     onPicked(picked == '__clear__' ? null : picked);
   }
 
@@ -255,7 +255,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         display: display,
       ),
     );
-    if (result != null) onDone(result);
+    if (result != null && mounted) onDone(result);
   }
 
   Future<void> _pickHeight() async {
@@ -287,7 +287,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         ),
       ),
     );
-    if (result != null) setState(() => _height = result);
+    if (result != null && mounted) setState(() => _height = result);
   }
 
   Future<void> _editPrompt({PromptModel? existing, int? index}) async {
@@ -300,7 +300,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       ),
       builder: (ctx) => _PromptEditorSheet(existing: existing),
     );
-    if (result == null) return;
+    if (result == null || !mounted) return;
     setState(() {
       if (index != null) {
         _prompts[index] = result;
@@ -1155,7 +1155,7 @@ class _PromptEditorSheetState extends State<_PromptEditorSheet> {
         ),
       ),
     );
-    if (picked != null) setState(() => _question = picked);
+    if (picked != null && mounted) setState(() => _question = picked);
   }
 
   @override

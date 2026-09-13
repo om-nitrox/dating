@@ -43,6 +43,7 @@ class _SelfieScreenState extends ConsumerState<SelfieScreen>
       imageQuality: 85,
     );
     if (img != null) {
+      if (!mounted) return;
       ref.read(onboardingProvider.notifier).setSelfie(File(img.path));
       setState(() {});
     }
@@ -58,7 +59,7 @@ class _SelfieScreenState extends ConsumerState<SelfieScreen>
       subtitle:
           'Quick selfie so we know it\'s you. Your selfie stays private — it\'s never shown on your profile.',
       whyText:
-          'Verification keeps Reverse Match real. We compare your selfie to your photos and remove fake accounts that don\'t match.',
+          'Verification keeps HOOK real. We compare your selfie to your photos and remove fake accounts that don\'t match.',
       progress: OnboardingSteps.progress('/onboarding/selfie'),
       nextLabel: verified ? 'Looks good — continue' : 'Take selfie first',
       onNext: verified

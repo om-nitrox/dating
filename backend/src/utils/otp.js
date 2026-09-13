@@ -40,12 +40,12 @@ const sendOtpEmail = async (email, code) => {
   }
 
   const mailOptions = {
-    from: `"Reverse Match" <${config.smtpUser}>`,
+    from: `"HOOK" <${config.smtpUser}>`,
     to: email,
     subject: 'Your Verification Code',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #e91e63;">Reverse Match</h2>
+        <h2 style="color: #e91e63;">HOOK</h2>
         <p>Your verification code is:</p>
         <h1 style="letter-spacing: 8px; color: #333; text-align: center; padding: 20px; background: #f5f5f5; border-radius: 8px;">${code}</h1>
         <p style="color: #666; font-size: 14px;">This code expires in ${config.otpExpiryMinutes} minutes.</p>

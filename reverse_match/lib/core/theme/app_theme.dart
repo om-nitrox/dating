@@ -85,6 +85,20 @@ class AppTheme {
     const r = 22.0;
     return base.copyWith(
       scaffoldBackgroundColor: bg,
+      // Pure full-screen cross-fade for every route change. The platform
+      // default slid pages horizontally, so during the splash→app handoff you
+      // briefly saw the splash on the left and the next screen on the right
+      // (the "half screen"). A cross-fade keeps each page full-screen.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _FadePageTransitionsBuilder(),
+          TargetPlatform.iOS: _FadePageTransitionsBuilder(),
+          TargetPlatform.fuchsia: _FadePageTransitionsBuilder(),
+          TargetPlatform.linux: _FadePageTransitionsBuilder(),
+          TargetPlatform.macOS: _FadePageTransitionsBuilder(),
+          TargetPlatform.windows: _FadePageTransitionsBuilder(),
+        },
+      ),
       textTheme: GoogleFonts.interTextTheme(base.textTheme).copyWith(
         displayLarge: serifHeading(fontSize: 34, color: textPrimary),
         displayMedium: serifHeading(fontSize: 30, color: textPrimary),
@@ -128,7 +142,7 @@ class AppTheme {
             if (states.contains(WidgetState.disabled)) {
               return AppColors.pillDisabled;
             }
-            return AppColors.primary;
+            return AppColors.buttonSolid;
           }),
           foregroundColor: const WidgetStatePropertyAll(Colors.white),
           iconColor: const WidgetStatePropertyAll(Colors.white),
@@ -151,7 +165,7 @@ class AppTheme {
             if (states.contains(WidgetState.pressed)) return 2;
             return 9;
           }),
-          shadowColor: const WidgetStatePropertyAll(AppColors.primary),
+          shadowColor: const WidgetStatePropertyAll(AppColors.buttonSolid),
           overlayColor: WidgetStatePropertyAll(
             Colors.white.withValues(alpha: 0.14),
           ),
@@ -263,6 +277,26 @@ class AppTheme {
         surfaceContainerHighest: surfaceVariant,
         outline: border,
       ),
+    );
+  }
+}
+
+/// A pure cross-fade page transition (no horizontal/vertical slide), so every
+/// screen — including the splash handoff — stays full-screen during the change.
+class _FadePageTransitionsBuilder extends PageTransitionsBuilder {
+  const _FadePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+      child: child,
     );
   }
 }

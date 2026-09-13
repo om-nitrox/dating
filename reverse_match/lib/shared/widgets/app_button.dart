@@ -38,13 +38,20 @@ class AppButton extends StatelessWidget {
                 Icon(icon, size: 20, color: fg),
                 const SizedBox(width: 8),
               ],
-              Text(
-                label,
-                style: TextStyle(
-                  color: fg,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
+              // Flexible + ellipsis so a long label fits and stays centered
+              // instead of overflowing the pill.
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
                 ),
               ),
             ],
@@ -61,7 +68,7 @@ class AppButton extends StatelessWidget {
         gradient: isOutlined
             ? null
             : const LinearGradient(
-                colors: [AppColors.grape, AppColors.primary],
+                colors: AppColors.buttonGradient,
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),

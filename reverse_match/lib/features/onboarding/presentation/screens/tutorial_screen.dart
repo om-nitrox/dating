@@ -143,7 +143,7 @@ class _TutorialScreenState extends ConsumerState<TutorialScreen>
     return OnboardingScaffold(
       title: 'You\'re all set!',
       subtitle:
-          'One last thing — here\'s how liking works on Reverse Match.',
+          'One last thing — here\'s how liking works on HOOK.',
       nextLabel: _submitting ? 'Setting up your profile…' : 'Start exploring',
       onNext: _submitting ? null : _finish,
       showBack: false,

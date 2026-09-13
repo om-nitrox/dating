@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/clay.dart';
 import '../onboarding_steps.dart';
 import '../providers/onboarding_provider.dart';
 import '../widgets/onboarding_scaffold.dart';
@@ -43,12 +44,10 @@ class _HeightScreenState extends ConsumerState<HeightScreen> {
       },
       child: Column(
         children: [
-          Container(
+          ClayContainer(
+            pressed: true,
+            borderRadius: Clay.radius,
             padding: const EdgeInsets.symmetric(vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceVariant,
-              borderRadius: BorderRadius.circular(30),
-            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -92,22 +91,31 @@ class _HeightScreenState extends ConsumerState<HeightScreen> {
   }
 
   Widget _unitChip(String label, bool active, VoidCallback onTap) {
+    final text = Text(
+      label,
+      style: TextStyle(
+        color: active ? Colors.white : AppColors.textSecondary,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+    const chipPadding =
+        EdgeInsets.symmetric(horizontal: 24, vertical: 10);
+    if (active) {
+      return ClayButton(
+        onTap: onTap,
+        depth: 0.5,
+        borderRadius: Clay.radiusSm,
+        padding: chipPadding,
+        color: AppColors.primary,
+        child: text,
+      );
+    }
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        decoration: BoxDecoration(
-          color: active ? AppColors.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? Colors.white : AppColors.textSecondary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: chipPadding,
+        child: text,
       ),
     );
   }

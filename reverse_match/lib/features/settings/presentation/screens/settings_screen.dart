@@ -47,7 +47,7 @@ class SettingsScreen extends ConsumerWidget {
                   color: AppColors.warning,
                   title: 'Boost',
                   subtitle: 'Get more profile views',
-                  trailing: _BoostBadge(),
+                  trailing: const _BoostBadge(),
                   onTap: () => context.push('/boost'),
                 ),
                 _SettingsTile(
@@ -388,10 +388,15 @@ class _ProfileHeader extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              u?.name ?? 'You',
-              style: AppTheme.serifHeading(fontSize: 26),
+            Flexible(
+              child: Text(
+                u?.name ?? 'You',
+                style: AppTheme.serifHeading(fontSize: 26),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             if (u?.isVerified ?? false) ...[
               const SizedBox(width: 6),
@@ -442,7 +447,7 @@ class _Section extends StatelessWidget {
           ),
         ),
         ClayContainer(
-          borderRadius: 26,
+          borderRadius: Clay.radiusSm,
           depth: 0.85,
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Column(
@@ -582,7 +587,7 @@ class _AppFooter extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Reverse Match',
+          'HOOK',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,

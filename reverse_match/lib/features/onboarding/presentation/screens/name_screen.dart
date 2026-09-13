@@ -42,7 +42,7 @@ class _NameScreenState extends ConsumerState<NameScreen> {
     return OnboardingScaffold(
       title: "What's your\nname?",
       subtitle:
-          "Reverse Match doesn't verify names or run background checks. We count on daters to be real with each other.",
+          "HOOK doesn't verify names or run background checks. We count on daters to be real with each other.",
       progress: OnboardingSteps.progress('/onboarding/name'),
       onNext: canProceed
           ? () {

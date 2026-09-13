@@ -53,12 +53,19 @@ class _ClayPainter extends CustomPainter {
     final rect = Offset.zero & size;
     final rr = RRect.fromRectAndRadius(rect, Radius.circular(radius));
 
-    // 1) Outer drop shadow — big, soft, offset down. Skipped when pressed.
+    // 1) Outer drop shadow — TWO layers so the surface reads as genuinely
+    // floating clay: a wide soft ambient shadow + a tighter, darker contact
+    // shadow close to the body. Skipped when pressed (recessed sits flush).
     if (!pressed) {
-      final drop = Paint()
+      final ambient = Paint()
         ..color = dropColor
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 26 * depth);
-      canvas.drawRRect(rr.shift(Offset(0, 12 * depth)), drop);
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 28 * depth);
+      canvas.drawRRect(rr.shift(Offset(0, 14 * depth)), ambient);
+
+      final contact = Paint()
+        ..color = dropColor
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 9 * depth);
+      canvas.drawRRect(rr.shift(Offset(0, 5 * depth)), contact);
     }
 
     // 2) Body fill (solid or gradient).
@@ -99,6 +106,23 @@ class _ClayPainter extends CustomPainter {
           ],
         ).createShader(Rect.fromLTWH(0, 0, size.width, sheenH));
       canvas.drawRect(Rect.fromLTWH(0, 0, size.width, sheenH), sheen);
+
+      // Soft highlight bloom catching the top-left of the puff — the single
+      // touch that sells the "inflated, light-from-above" clay look.
+      final bloomRadius = size.shortestSide * 0.95;
+      final bloom = Paint()
+        ..shader = RadialGradient(
+          colors: [
+            highlight.withValues(alpha: gradient != null ? 0.20 : 0.14),
+            highlight.withValues(alpha: 0.0),
+          ],
+        ).createShader(
+          Rect.fromCircle(
+            center: Offset(size.width * 0.22, size.height * 0.16),
+            radius: bloomRadius,
+          ),
+        );
+      canvas.drawRect(rect, bloom);
     }
     canvas.restore();
 

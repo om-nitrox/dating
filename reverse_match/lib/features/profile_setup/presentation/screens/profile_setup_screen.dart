@@ -84,7 +84,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       maxHeight: 1000,
       imageQuality: 85,
     );
-    if (image != null) {
+    if (image != null && mounted) {
       setState(() => _photos.add(File(image.path)));
     }
   }
@@ -102,6 +102,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       }
 
       final position = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
@@ -113,6 +114,12 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   }
 
   Future<void> _submit() async {
+    final age = int.tryParse(_ageController.text.trim());
+    if (age == null) {
+      context.showSnackBar('Please enter a valid age', isError: true);
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
     final repo = ref.read(profileRepositoryProvider);
@@ -121,13 +128,12 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     if (_photos.isNotEmpty) {
       final photoResult = await repo.uploadPhotos(_photos);
       if (photoResult is Failure) {
+        if (!mounted) return;
         setState(() => _isSubmitting = false);
-        if (mounted) {
-          context.showSnackBar(
-            (photoResult as Failure).exception.message,
-            isError: true,
-          );
-        }
+        context.showSnackBar(
+          (photoResult as Failure).exception.message,
+          isError: true,
+        );
         return;
       }
     }
@@ -135,7 +141,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     // Update profile
     final data = <String, dynamic>{
       'name': _nameController.text.trim(),
-      'age': int.parse(_ageController.text.trim()),
+      'age': age,
       'gender': _gender,
       'bio': _bioController.text.trim(),
       'interests': _interests.toList(),
@@ -155,6 +161,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
     final result = await repo.updateProfile(data);
 
+    if (!mounted) return;
     setState(() => _isSubmitting = false);
 
     switch (result) {

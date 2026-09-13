@@ -211,7 +211,7 @@ class _QueueCard extends StatelessWidget {
         ? '${profile.name}, ${profile.age}'
         : profile.name;
     return ClayContainer(
-      borderRadius: 24,
+      borderRadius: Clay.radiusSm,
       depth: 0.9,
       padding: const EdgeInsets.all(16),
       child: Column(

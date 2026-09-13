@@ -53,7 +53,7 @@ class AppTextField extends StatelessWidget {
         ],
         ClayContainer(
           pressed: true,
-          borderRadius: 20,
+          borderRadius: Clay.radiusSm,
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: TextFormField(
             controller: controller,

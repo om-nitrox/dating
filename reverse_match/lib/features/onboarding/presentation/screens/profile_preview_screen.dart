@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/clay.dart';
 import '../onboarding_steps.dart';
 import '../providers/onboarding_provider.dart';
 import '../widgets/onboarding_scaffold.dart';
@@ -24,50 +25,43 @@ class ProfilePreviewScreen extends ConsumerWidget {
       progress: OnboardingSteps.progress('/onboarding/preview-card'),
       onNext: () =>
           context.push(OnboardingSteps.next('/onboarding/preview-card')!),
-      child: Material(
-        color: AppColors.surface,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
-          side: const BorderSide(color: AppColors.inputBorder, width: 1),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-          child: Column(
-            children: [
-              _PreviewRow(
-                icon: Icons.person_outline,
-                label: name,
-                filled: data.firstName.isNotEmpty,
-              ),
-              _PreviewRow(
-                icon: Icons.cake_outlined,
-                label: age,
-                filled: data.dob != null,
-              ),
-              _PreviewRow(
-                icon: Icons.location_on_outlined,
-                label: city,
-                filled: data.city != null,
-              ),
-              _PreviewRow(
-                icon: Icons.home_outlined,
-                label: 'Your hometown',
-                filled: false,
-              ),
-              _PreviewRow(
-                icon: Icons.search,
-                label: "Connections you're open to",
-                filled: false,
-              ),
-              _PreviewRow(
-                icon: Icons.group_outlined,
-                label: 'Your relationship type',
-                filled: false,
-                last: true,
-              ),
-            ],
-          ),
+      child: ClayContainer(
+        borderRadius: Clay.radiusSm,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        child: Column(
+          children: [
+            _PreviewRow(
+              icon: Icons.person_outline,
+              label: name,
+              filled: data.firstName.isNotEmpty,
+            ),
+            _PreviewRow(
+              icon: Icons.cake_outlined,
+              label: age,
+              filled: data.dob != null,
+            ),
+            _PreviewRow(
+              icon: Icons.location_on_outlined,
+              label: city,
+              filled: data.city != null,
+            ),
+            _PreviewRow(
+              icon: Icons.home_outlined,
+              label: 'Your hometown',
+              filled: false,
+            ),
+            _PreviewRow(
+              icon: Icons.search,
+              label: "Connections you're open to",
+              filled: false,
+            ),
+            _PreviewRow(
+              icon: Icons.group_outlined,
+              label: 'Your relationship type',
+              filled: false,
+              last: true,
+            ),
+          ],
         ),
       ),
     );

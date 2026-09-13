@@ -40,6 +40,10 @@ class _BoostSuccessScreenState extends State<BoostSuccessScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
+        // Fill the screen — a decorated Container otherwise shrink-wraps to its
+        // widest child, leaving a background band on the side.
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,

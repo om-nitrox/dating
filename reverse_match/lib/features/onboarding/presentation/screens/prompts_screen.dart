@@ -335,6 +335,7 @@ class _PromptPickerSheetState extends State<_PromptPickerSheet> {
                   hintText: 'Your answer',
                   maxLines: 5,
                   maxLength: 225,
+                  onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 20),
                 SizedBox(

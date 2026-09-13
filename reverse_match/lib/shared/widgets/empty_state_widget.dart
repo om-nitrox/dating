@@ -53,7 +53,7 @@ class EmptyStateWidget extends StatelessWidget {
               const SizedBox(height: 28),
               ClayButton(
                 onTap: onAction,
-                borderRadius: 20,
+                borderRadius: Clay.radiusSm,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                 gradient: const LinearGradient(

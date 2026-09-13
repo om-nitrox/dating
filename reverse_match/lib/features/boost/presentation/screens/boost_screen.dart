@@ -86,6 +86,12 @@ class _BoostScreenState extends ConsumerState<BoostScreen> {
                 data: (plans) {
                   final ordered = [...plans]
                     ..sort((a, b) => a.price.compareTo(b.price));
+                  if (ordered.isEmpty) {
+                    return _ErrorState(
+                      message: 'No boost plans are available right now.',
+                      onRetry: () => ref.invalidate(boostPlansProvider),
+                    );
+                  }
                   _selectedTier ??= ordered
                       .firstWhere(
                         (p) => p.tier == 'silver',
@@ -131,10 +137,12 @@ class _BoostScreenState extends ConsumerState<BoostScreen> {
       AsyncValue<List<BoostPlan>> plans, String? tier) {
     if (tier == null) return null;
     return plans.maybeWhen(
-      data: (list) => list.firstWhere(
-        (p) => p.tier == tier,
-        orElse: () => list.first,
-      ),
+      data: (list) {
+        for (final p in list) {
+          if (p.tier == tier) return p;
+        }
+        return list.isNotEmpty ? list.first : null;
+      },
       orElse: () => null,
     );
   }
@@ -295,11 +303,13 @@ class _BoostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tierTitle = plan.tier[0].toUpperCase() + plan.tier.substring(1);
+    final tierTitle = plan.tier.isEmpty
+        ? plan.tier
+        : plan.tier[0].toUpperCase() + plan.tier.substring(1);
     final hours = (plan.duration / 60).round();
     return ClayButton(
       onTap: onTap,
-      borderRadius: 24,
+      borderRadius: Clay.radiusSm,
       depth: isSelected ? 0.55 : 0.85,
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
       color: isSelected
@@ -434,7 +444,7 @@ class _AutoBoostNote extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClayContainer(
       pressed: true,
-      borderRadius: 18,
+      borderRadius: Clay.radiusSm,
       padding: const EdgeInsets.all(15),
       child: Row(
         children: [

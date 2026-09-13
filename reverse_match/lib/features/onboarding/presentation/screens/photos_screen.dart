@@ -29,6 +29,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
       maxHeight: 1600,
       imageQuality: 85,
     );
+    if (!mounted) return;
     if (img != null) {
       ref.read(onboardingProvider.notifier).addPhoto(File(img.path));
     }

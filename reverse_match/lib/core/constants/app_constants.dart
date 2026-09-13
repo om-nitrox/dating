@@ -1,5 +1,5 @@
 class AppConstants {
-  static const String appName = 'Reverse Match';
+  static const String appName = 'HOOK';
   static const int minPhotos = 2;
   static const int maxPhotos = 6;
   static const int maxBioLength = 300;

@@ -60,6 +60,16 @@ class AppColors {
   static const List<Color> hypeGradient = [primary, hot, secondary];
   static const List<Color> clayGradient = [primary, secondary];
 
+  /// Primary BUTTON gradient — vibrant rose → velvet burgundy. Lively and
+  /// premium, with white text popping cleanly on top. Used by the shared
+  /// AppButton and onboarding pill so every primary CTA matches.
+  static const List<Color> buttonGradient = [primaryLight, primary];
+
+  /// Solid fill for the themed ElevatedButton (used app-wide). A vibrant berry
+  /// that sits in the middle of [buttonGradient] — brighter and livelier than
+  /// the deep burgundy while staying on-brand. White text stays high-contrast.
+  static const Color buttonSolid = Color(0xFFB83A5E);
+
   // ---- Claymorphism shadow tokens (LIGHT theme — warm ivory) ----
   /// Inner top-left highlight (lifts the surface).
   static const Color clayHighlight = Color(0xFFFFFFFF);

@@ -306,6 +306,10 @@ class _OtpBox extends StatefulWidget {
 class _OtpBoxState extends State<_OtpBox> {
   bool _focused = false;
 
+  // Owned by this box (the TextField has its own [widget.focusNode]); reused
+  // across rebuilds and disposed below so we don't leak a FocusNode per build.
+  final FocusNode _keyListenerNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -315,6 +319,7 @@ class _OtpBoxState extends State<_OtpBox> {
   @override
   void dispose() {
     widget.focusNode.removeListener(_onFocusChange);
+    _keyListenerNode.dispose();
     super.dispose();
   }
 
@@ -345,14 +350,15 @@ class _OtpBoxState extends State<_OtpBox> {
         ),
       ),
       child: KeyboardListener(
-        focusNode: FocusNode(),
+        focusNode: _keyListenerNode,
         onKeyEvent: widget.onKey,
         child: TextField(
           controller: widget.controller,
           focusNode: widget.focusNode,
           textAlign: TextAlign.center,
           keyboardType: TextInputType.number,
-          maxLength: 6, // allow full-code paste into the first box.
+          maxLength:
+              AppConstants.otpLength, // allow full-code paste into the first box.
           showCursor: true,
           style: const TextStyle(
             fontSize: 24,

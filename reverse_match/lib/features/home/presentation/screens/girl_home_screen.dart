@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../../core/constants/taxonomies.dart';
 import '../../../../core/extensions/context_extensions.dart';
@@ -200,7 +199,6 @@ class _GirlHomeScreenState extends ConsumerState<GirlHomeScreen> {
             _FilterBar(
               filters: ref.watch(discoveryFiltersProvider),
               onFilter: _openFilters,
-              onIdeal: () => context.push('/ideal-match'),
             ),
             Expanded(child: _body(feedState)),
           ],
@@ -245,11 +243,9 @@ class _GirlHomeScreenState extends ConsumerState<GirlHomeScreen> {
 class _FilterBar extends StatelessWidget {
   final DiscoveryFilters filters;
   final VoidCallback onFilter;
-  final VoidCallback onIdeal;
   const _FilterBar({
     required this.filters,
     required this.onFilter,
-    required this.onIdeal,
   });
 
   @override
@@ -301,21 +297,6 @@ class _FilterBar extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-          const SizedBox(width: 4),
-          // Ideal Match — girls-only ML pick.
-          ClayButton(
-            onTap: onIdeal,
-            borderRadius: 22,
-            depth: 0.7,
-            padding: const EdgeInsets.all(10),
-            gradient: const LinearGradient(
-              colors: [AppColors.grape, AppColors.hot],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            child: const Icon(Icons.auto_awesome_rounded,
-                color: Colors.white, size: 20),
           ),
         ],
       ),
@@ -421,7 +402,7 @@ class _EmptyDeck extends StatelessWidget {
             ClayContainer(
               width: 120,
               height: 120,
-              borderRadius: 44,
+              borderRadius: Clay.radiusLg,
               alignment: Alignment.center,
               child: const Icon(
                 Icons.travel_explore_rounded,

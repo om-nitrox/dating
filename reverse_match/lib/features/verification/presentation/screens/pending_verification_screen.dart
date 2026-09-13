@@ -170,7 +170,7 @@ class _PendingVerificationScreenState
               if (rejected && _rejectionReason != null) ...[
                 const SizedBox(height: 20),
                 ClayContainer(
-                  borderRadius: 20,
+                  borderRadius: Clay.radiusSm,
                   depth: 0.7,
                   padding: const EdgeInsets.all(16),
                   child: Row(
@@ -227,7 +227,7 @@ class _WaitingHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClayContainer(
-      borderRadius: 20,
+      borderRadius: Clay.radiusSm,
       depth: 0.7,
       padding: const EdgeInsets.all(16),
       child: Row(

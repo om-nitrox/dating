@@ -31,7 +31,11 @@ class MatchModel {
     );
   }
 
-  UserModel otherUser(String myId) {
+  /// The other participant in the match. Returns null only for malformed data
+  /// (an empty `users` list) so callers can skip it instead of crashing —
+  /// previously `users.first` on an empty list threw a StateError.
+  UserModel? otherUser(String myId) {
+    if (users.isEmpty) return null;
     return users.firstWhere(
       (u) => u.id != myId,
       orElse: () => users.first,

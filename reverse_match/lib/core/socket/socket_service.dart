@@ -17,13 +17,25 @@ class SocketService {
   bool get isConnected => _socket?.connected ?? false;
 
   Future<void> connect() async {
+    // Already live — reuse it instead of leaking a second socket.
+    if (_socket != null && _socket!.connected) return;
+
     final token = await _storage.getAccessToken();
     if (token == null) return;
+
+    // Dispose any prior (disconnected) socket before creating a fresh one with
+    // the current token.
+    _socket?.dispose();
 
     _socket = io.io(
       ApiEndpoints.socketUrl,
       io.OptionBuilder()
-          .setTransports(['websocket'])
+          // Start with HTTP long-polling and upgrade to WebSocket. A
+          // websocket-ONLY transport skips the polling handshake and is
+          // frequently rejected behind PaaS proxies (e.g. Catalyst AppSail),
+          // so the socket never connects and chat silently breaks. The
+          // polling→websocket order is Socket.IO's robust default.
+          .setTransports(['polling', 'websocket'])
           .setAuth({'token': token})
           .enableReconnection()
           .setReconnectionDelay(1000)

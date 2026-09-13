@@ -255,8 +255,8 @@ class _AgeConfirmSheet extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             eligible
-                ? 'Make sure your age is correct before moving on. It keeps Reverse Match real for everyone.'
-                : 'You must be at least 18 to use Reverse Match. Please edit your date of birth.',
+                ? 'Make sure your age is correct before moving on. It keeps HOOK real for everyone.'
+                : 'You must be at least 18 to use HOOK. Please edit your date of birth.',
             style: const TextStyle(
               fontSize: 14,
               color: AppColors.textSecondary,

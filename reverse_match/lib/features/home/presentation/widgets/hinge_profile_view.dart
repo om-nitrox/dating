@@ -113,12 +113,14 @@ class _HingeProfileViewState extends State<HingeProfileView>
   }
 
   void _flingLike(double width) {
+    if (_flinging) return;
     HapticFeedback.mediumImpact();
     setState(() => _flinging = true);
     _animateTo(width * 1.5, curve: Curves.easeIn, ms: 300, then: widget.onLike);
   }
 
   void _flingPass(double width) {
+    if (_flinging) return;
     HapticFeedback.lightImpact();
     setState(() => _flinging = true);
     _animateTo(-width * 1.5, curve: Curves.easeIn, ms: 300, then: widget.onPass);
@@ -219,10 +221,14 @@ class _HingeProfileViewState extends State<HingeProfileView>
       // Horizontal drags swipe the whole profile; vertical drags fall through
       // to the inner ListView so scrolling still works.
       onHorizontalDragUpdate: (d) {
+        if (_flinging) return; // ignore drags while the card is flying off
         _anim = null; // detach the animation so it doesn't fight the finger
         setState(() => _dx += d.delta.dx);
       },
-      onHorizontalDragEnd: (_) => _onDragEnd(width),
+      onHorizontalDragEnd: (_) {
+        if (_flinging) return;
+        _onDragEnd(width);
+      },
       child: AnimatedBuilder(
         animation: _entrance,
         builder: (context, child) {
@@ -391,10 +397,10 @@ class _VitalsCard extends StatelessWidget {
         user.orientation.isNotEmpty ? user.orientation.first : null;
 
     return ClayContainer(
-      borderRadius: 24,
+      borderRadius: Clay.radiusSm,
       padding: EdgeInsets.zero,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(Clay.radiusSm),
         child: Column(
         children: [
           // Top tri-column row: age | gender | orientation.
@@ -517,12 +523,12 @@ class _PhotoCard extends StatelessWidget {
     // card no longer dominates the whole viewport. BoxFit.cover crops cleanly.
     final h = MediaQuery.sizeOf(context).height * 0.46;
     return ClayContainer(
-      borderRadius: 24,
+      borderRadius: Clay.radiusSm,
       padding: EdgeInsets.zero,
       child: Stack(
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(Clay.radiusSm),
             child: SizedBox(
               height: h,
               width: double.infinity,
@@ -549,7 +555,7 @@ class _PromptCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClayContainer(
-      borderRadius: 24,
+      borderRadius: Clay.radiusSm,
       padding: const EdgeInsets.fromLTRB(22, 26, 22, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

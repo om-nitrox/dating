@@ -26,7 +26,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
       hero: _HeroVariant.heart,
       title: 'Meaningful matches,\nnot endless swipes',
       subtitle:
-          'Reverse Match is built for people who want connection, not just attention.',
+          'HOOK is built for people who want connection, not just attention.',
     ),
     _PageData(
       hero: _HeroVariant.reverse,
@@ -81,6 +81,10 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
 
     return Scaffold(
       body: Container(
+        // Fill the screen — a decorated Container otherwise shrink-wraps to its
+        // widest child, leaving a background band on the side.
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -228,7 +232,7 @@ class _TopBar extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               const Text(
-                'Reverse Match',
+                'HOOK',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,

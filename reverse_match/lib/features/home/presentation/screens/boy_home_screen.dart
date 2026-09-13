@@ -659,13 +659,11 @@ class _EmptyQueue extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
+                    ClayContainer(
                       width: 120,
                       height: 120,
-                      decoration: const BoxDecoration(
-                        color: AppColors.surfaceVariant,
-                        shape: BoxShape.circle,
-                      ),
+                      borderRadius: Clay.radiusLg,
+                      alignment: Alignment.center,
                       child: const Icon(
                         Icons.favorite_outline_rounded,
                         size: 54,
